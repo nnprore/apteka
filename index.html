@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dorixona Qarz va Inkassatsiya Tizimi</title>
+
+  <!-- React, React-DOM, Babel, TailwindCSS, Supabase JS -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 font-sans p-2 md:p-6">
+
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // 🔴 СЮДА ВСТАВЬТЕ ВАШИ КЛЮЧИ ИЗ SUPABASE:
+    const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co"; // <-- Ваш Project URL
+    const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk"; // <-- Ваш anon public key
+
+    let supabase = null;
+    if (SUPABASE_URL.includes("YOUR_SUPABASE") === false) {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+
+    function App() {
+      // Aktiv oyna: 'GOODS' | 'PAYMENT' | 'REPORTS' | 'PHARMACIES'
+      const [activeTab, setActiveTab] = useState('REPORTS');
+
+      // Selected Pharmacy for Modal History
+      const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
+
+      // Dorixonalar
+      const [pharmacies, setPharmacies] = useState(() => {
+        const local = localStorage.getItem('pharmacies');
+        return local ? JSON.parse(local) : [
+          { id: 1, name: 'Dorixona #1 (Chilonzor)' },
+          { id: 2, name: 'Dorixona #2 (Yunusobod)' }
+        ];
+      });
+
+      // Kuryerlar
+      const [couriers, setCouriers] = useState(() => {
+        const local = localStorage.getItem('couriers');
+        return local ? JSON.parse(local) : [
+          { id: 1, full_name: 'Alijon Valiyev' },
+          { id: 2, full_name: 'Sardor Rahimov' }
+        ];
+      });
+
+      // Operatsiyalar
+      const [records, setRecords] = useState(() => {
+        const local = localStorage.getItem('records');
+        return local ? JSON.parse(local) : [];
+      });
+
+      // Formlar
+      const [newPharmName, setNewPharmName] = useState('');
+      const [goodsForm, setGoodsForm] = useState({
+        pharmacy_id: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        comment: ''
+      });
+
+      const [payForm, setPayForm] = useState({
+        pharmacy_id: '',
+        courier_id: '',
+        amount: '',
+        payment_type: 'CASH',
+        date: new Date().toISOString().split('T')[0],
+        for_goods_date: '',
+        comment: ''
+      });
+
+      // LocalStorage saqlash
+      useEffect(() => {
+        localStorage.setItem('pharmacies', JSON.stringify(pharmacies));
+      }, [pharmacies]);
+
+      useEffect(() => {
+        localStorage.setItem('records', JSON.stringify(records));
+      }, [records]);
+
+      // Yangi dorixona qo'shish
+      const handleAddPharmacy = (e) => {
+        e.preventDefault();
+        if (!newPharmName.trim()) return alert("Dorixona nomini kiriting!");
+        const newP = { id: Date.now(), name: newPharmName.trim() };
+        setPharmacies([...pharmacies, newP]);
+        setNewPharmName('');
+        alert("Yangi dorixona qo'shildi!");
+      };
+
+      // Tovar Berish
+      const handleAddGoods = (e) => {
+        e.preventDefault();
+        if (!goodsForm.pharmacy_id || !goodsForm.amount || !goodsForm.date) {
+          return alert("Iltimos, dorixona, summa va sanani to'ldiring!");
+        }
+
+        const newRec = {
+          id: Date.now(),
+          pharmacy_id: Number(goodsForm.pharmacy_id),
+          courier_id: null,
+          type: 'GOODS',
+          amount: Number(goodsForm.amount),
+          payment_type: '-',
+          date: goodsForm.date,
+          for_goods_date: null,
+          comment: goodsForm.comment,
+          created_at: new Date().toISOString()
+        };
+
+        setRecords([newRec, ...records]);
+        setGoodsForm({ pharmacy_id: '', amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
+        alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
+      };
+
+      // Pul Olish
+      const handleAddPayment = (e) => {
+        e.preventDefault();
+        if (!payForm.pharmacy_id || !payForm.amount || !payForm.date || !payForm.courier_id) {
+          return alert("Iltimos, barcha zaruriy maydonlarni to'ldiring!");
+        }
+
+        const newRec = {
+          id: Date.now(),
+          pharmacy_id: Number(payForm.pharmacy_id),
+          courier_id: Number(payForm.courier_id),
+          type: 'PAYMENT',
+          amount: Number(payForm.amount),
+          payment_type: payForm.payment_type,
+          date: payForm.date,
+          for_goods_date: payForm.for_goods_date || null,
+          comment: payForm.comment,
+          created_at: new Date().toISOString()
+        };
+
+        setRecords([newRec, ...records]);
+        setPayForm({ pharmacy_id: '', courier_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
+        alert("To'lov saqlandi!");
+      };
+
+      // Hisob-kitob va muddatlarni aniqlash
+      const getPharmacyStats = (pharmacyId) => {
+        const pharmRecs = records
+          .filter(r => r.pharmacy_id === pharmacyId)
+          .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        let totalGoods = 0;
+        let totalPayment = 0;
+        let yesterdayBalance = 0;
+        let unpaidBatches = [];
+
+        // Har bir operatsiyadan keyingi qarz qoldig'ini hisoblash
+        let runningBalance = 0;
+        const historyWithBalance = pharmRecs.map(r => {
+          if (r.type === 'GOODS') {
+            runningBalance += Number(r.amount);
+          } else if (r.type === 'PAYMENT') {
+            runningBalance -= Number(r.amount);
+          }
+          return {
+            ...r,
+            balanceAfter: runningBalance
+          };
+        });
+
+        pharmRecs.forEach(r => {
+          if (r.date < todayStr) {
+            if (r.type === 'GOODS') yesterdayBalance += Number(r.amount);
+            if (r.type === 'PAYMENT') yesterdayBalance -= Number(r.amount);
+          }
+
+          if (r.type === 'GOODS') {
+            totalGoods += Number(r.amount);
+            unpaidBatches.push({ date: r.date, amount: Number(r.amount) });
+          } else if (r.type === 'PAYMENT') {
+            totalPayment += Number(r.amount);
+            let payRem = Number(r.amount);
+            while (payRem > 0 && unpaidBatches.length > 0) {
+              if (unpaidBatches[0].amount <= payRem) {
+                payRem -= unpaidBatches[0].amount;
+                unpaidBatches.shift();
+              } else {
+                unpaidBatches[0].amount -= payRem;
+                payRem = 0;
+              }
+            }
+          }
+        });
+
+        const currentBalance = totalGoods - totalPayment;
+
+        let oldestDays = 0;
+        if (currentBalance > 0 && unpaidBatches.length > 0) {
+          const oldestDate = new Date(unpaidBatches[0].date);
+          const today = new Date();
+          const diffTime = Math.abs(today - oldestDate);
+          oldestDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        }
+
+        let statusClass = 'bg-green-100 text-green-800 border-green-300';
+        let statusText = 'Muntazam';
+        if (oldestDays >= 45) {
+          statusClass = 'bg-red-500 text-white font-bold animate-pulse';
+          statusText = `QIZIL XAVF (${oldestDays} kun!)`;
+        } else if (oldestDays >= 30) {
+          statusClass = 'bg-yellow-400 text-gray-900 font-bold';
+          statusText = `SARIQ (${oldestDays} kun)`;
+        }
+
+        return {
+          totalGoods,
+          totalPayment,
+          currentBalance,
+          yesterdayBalance,
+          oldestDays,
+          statusClass,
+          statusText,
+          recordsHistory: historyWithBalance
+        };
+      };
+
+      const selectedPharmData = selectedPharmacyId ? getPharmacyStats(selectedPharmacyId) : null;
+      const selectedPharmObj = pharmacies.find(p => p.id === selectedPharmacyId);
+
+      // Tanlangan dorixona bo'yicha berilgan tovarlar sanalari ro'yxati
+      const selectedPharmGoodsDates = payForm.pharmacy_id 
+        ? records.filter(r => r.pharmacy_id === Number(payForm.pharmacy_id) && r.type === 'GOODS')
+        : [];
+
+      return (
+        <div className="max-w-6xl mx-auto space-y-6">
+          {/* Sarlavha va Navigatsiya Menu */}
+          <header className="bg-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-black text-gray-800">🏥 Dorixona Boshqaruv Tizimi</h1>
+              <p className="text-xs text-gray-500 mt-0.5">Tovar topshirish, pul olish va qarz muddati tahlili</p>
+            </div>
+
+            {/* Menu Knopkalari */}
+            <div className="flex flex-wrap gap-2 bg-gray-100 p-1.5 rounded-xl text-xs font-bold">
+              <button 
+                onClick={() => setActiveTab('REPORTS')} 
+                className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'REPORTS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>
+                📊 Hisobotlar
+              </button>
+              <button 
+                onClick={() => setActiveTab('GOODS')} 
+                className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'GOODS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>
+                📦 Tovar Berish
+              </button>
+              <button 
+                onClick={() => setActiveTab('PAYMENT')} 
+                className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PAYMENT' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>
+                💵 Pul Olish
+              </button>
+              <button 
+                onClick={() => setActiveTab('PHARMACIES')} 
+                className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PHARMACIES' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>
+                🏥 Dorixonalar
+              </button>
+            </div>
+          </header>
+
+          {/* OYNA 1: HISOBOTLAR */}
+          {activeTab === 'REPORTS' && (
+            <div className="space-y-6">
+              {/* Statistik Kartochkalar */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-yellow-500">
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Sariq Zonada (30+ kun)</p>
+                  <h2 className="text-2xl font-black text-yellow-600 mt-1">
+                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 30 && getPharmacyStats(p.id).oldestDays < 45).length} ta dorixona
+                  </h2>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-red-500">
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Qizil Zonada (45+ kun)</p>
+                  <h2 className="text-2xl font-black text-red-600 mt-1">
+                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 45).length} ta dorixona
+                  </h2>
+                </div>
+
+                <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-purple-500">
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Jami Umumi Qarz Summasi</p>
+                  <h2 className="text-2xl font-black text-purple-700 mt-1">
+                    {pharmacies.reduce((acc, p) => acc + getPharmacyStats(p.id).currentBalance, 0).toLocaleString()} so'm
+                  </h2>
+                </div>
+              </div>
+
+              {/* Barcha Dorixonalar Balansi Jadvali */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-base font-bold text-gray-800">📊 Dorixonalar Balansi va Qarz Muddatlari</h3>
+                  <span className="text-xs text-gray-400">Tarixni ko'rish uchun dorixona ustiga bosing</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b text-gray-500 text-xs uppercase">
+                        <th className="p-3">Dorixona Nomi</th>
+                        <th className="p-3">Kechagi Qoldiq</th>
+                        <th className="p-3">Jami Tovar</th>
+                        <th className="p-3">Jami To'langan</th>
+                        <th className="p-3">Bugungi Qoldiq (Qarz)</th>
+                        <th className="p-3">Eng Eski Qarz</th>
+                        <th className="p-3">Holat</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-xs">
+                      {pharmacies.map(p => {
+                        const stats = getPharmacyStats(p.id);
+                        return (
+                          <tr 
+                            key={p.id} 
+                            onClick={() => setSelectedPharmacyId(p.id)}
+                            className="hover:bg-blue-50 cursor-pointer transition">
+                            <td className="p-3 font-bold text-blue-700 underline">{p.name}</td>
+                            <td className="p-3 font-medium text-gray-600">{stats.yesterdayBalance.toLocaleString()} so'm</td>
+                            <td className="p-3 text-blue-600 font-semibold">{stats.totalGoods.toLocaleString()} so'm</td>
+                            <td className="p-3 text-emerald-600 font-semibold">{stats.totalPayment.toLocaleString()} so'm</td>
+                            <td className="p-3 font-black text-gray-900">{stats.currentBalance.toLocaleString()} so'm</td>
+                            <td className="p-3 font-bold text-gray-700">{stats.currentBalance > 0 ? `${stats.oldestDays} kun` : 'Qarz yo\'q'}</td>
+                            <td className="p-3">
+                              <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${stats.statusClass}`}>
+                                {stats.currentBalance > 0 ? stats.statusText : 'To\'langan ✅'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* OYNA 2: TOVAR BERISH OYNASI */}
+          {activeTab === 'GOODS' && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm max-w-2xl mx-auto">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 flex items-center gap-2">
+                📦 Dorixonaga Tovar Berish (Qarz Yozish)
+              </h3>
+              <form onSubmit={handleAddGoods} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
+                  <select 
+                    className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" 
+                    value={goodsForm.pharmacy_id} 
+                    onChange={e => setGoodsForm({...goodsForm, pharmacy_id: e.target.value})}>
+                    <option value="">-- Tanlang --</option>
+                    {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Berilgan Tovar Summasi (so'm)</label>
+                  <input 
+                    type="number" 
+                    placeholder="Masalan: 2500000" 
+                    className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" 
+                    value={goodsForm.amount} 
+                    onChange={e => setGoodsForm({...goodsForm, amount: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Topshirilgan Sana</label>
+                  <input 
+                    type="date" 
+                    className="w-full p-3 border rounded-xl font-bold" 
+                    value={goodsForm.date} 
+                    onChange={e => setGoodsForm({...goodsForm, date: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Izoh / Nakladnoy Raqami</label>
+                  <input 
+                    type="text" 
+                    placeholder="Masalan: Nakladnoy #4501" 
+                    className="w-full p-3 border rounded-xl" 
+                    value={goodsForm.comment} 
+                    onChange={e => setGoodsForm({...goodsForm, comment: e.target.value})} 
+                  />
+                </div>
+
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold p-3.5 rounded-xl hover:bg-blue-700 shadow-md text-sm transition mt-4">
+                  Tovarni Saqlash va Qarzga Kiritish
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* OYNA 3: PUL OLISH OYNASI */}
+          {activeTab === 'PAYMENT' && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm max-w-2xl mx-auto">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 flex items-center gap-2">
+                💵 Dorixonadan Pul Olish (Inkassatsiya)
+              </h3>
+              <form onSubmit={handleAddPayment} className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
+                  <select 
+                    className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" 
+                    value={payForm.pharmacy_id} 
+                    onChange={e => setPayForm({...payForm, pharmacy_id: e.target.value, for_goods_date: ''})}>
+                    <option value="">-- Tanlang --</option>
+                    {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Qaysi Kungi Tovar Uchun Olinmoqda?</label>
+                  <select 
+                    className="w-full p-3 border rounded-xl bg-gray-50 font-bold" 
+                    value={payForm.for_goods_date} 
+                    onChange={e => setPayForm({...payForm, for_goods_date: e.target.value})}>
+                    <option value="">-- Tanlang (ixtiyoriy) --</option>
+                    {selectedPharmGoodsDates.map(r => (
+                      <option key={r.id} value={r.date}>
+                        {r.date} sanasidagi tovar ({Number(r.amount).toLocaleString()} so'm)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Pulni Olgan Kuryer / Inkassator</label>
+                  <select 
+                    className="w-full p-3 border rounded-xl bg-gray-50 font-bold" 
+                    value={payForm.courier_id} 
+                    onChange={e => setPayForm({...payForm, courier_id: e.target.value})}>
+                    <option value="">-- Tanlang --</option>
+                    {couriers.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Olingan Pul Summasi (so'm)</label>
+                  <input 
+                    type="number" 
+                    placeholder="Masalan: 1000000" 
+                    className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" 
+                    value={payForm.amount} 
+                    onChange={e => setPayForm({...payForm, amount: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">To'lov Turi</label>
+                  <select 
+                    className="w-full p-3 border rounded-xl bg-gray-50 font-bold" 
+                    value={payForm.payment_type} 
+                    onChange={e => setPayForm({...payForm, payment_type: e.target.value})}>
+                    <option value="CASH">💵 Naqd Pul</option>
+                    <option value="TRANSFER">🏦 Perechisleniye (Bank)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Olingan Sana (Bugungi sana)</label>
+                  <input 
+                    type="date" 
+                    className="w-full p-3 border rounded-xl font-bold" 
+                    value={payForm.date} 
+                    onChange={e => setPayForm({...payForm, date: e.target.value})} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1">Izoh / Tovar Sanasi</label>
+                  <input 
+                    type="text" 
+                    placeholder="Masalan: 04.10.2026 dagi tovar uchun" 
+                    className="w-full p-3 border rounded-xl" 
+                    value={payForm.comment} 
+                    onChange={e => setPayForm({...payForm, comment: e.target.value})} 
+                  />
+                </div>
+
+                <button type="submit" className="w-full bg-emerald-600 text-white font-bold p-3.5 rounded-xl hover:bg-emerald-700 shadow-md text-sm transition mt-4">
+                  To'lovni Saqlash
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* OYNA 4: DORIXONALAR RO'YXATI VA QO'SHISH */}
+          {activeTab === 'PHARMACIES' && (
+            <div className="space-y-6">
+              <div className="bg-white p-6 rounded-2xl shadow-sm max-w-xl mx-auto">
+                <h3 className="text-base font-bold text-gray-800 mb-3">➕ Yangi Dorixona Qo'shish</h3>
+                <form onSubmit={handleAddPharmacy} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    placeholder="Dorixona nomi va manzili..." 
+                    className="w-full p-3 border rounded-xl text-xs font-semibold"
+                    value={newPharmName}
+                    onChange={e => setNewPharmName(e.target.value)}
+                  />
+                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition whitespace-nowrap">
+                    Qo'shish
+                  </button>
+                </form>
+              </div>
+
+              <div className="bg-white p-6 rounded-2xl shadow-sm">
+                <h3 className="text-base font-bold text-gray-800 mb-4">🏥 Barcha Dorixonalar Ro'yxati</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pharmacies.map(p => {
+                    const stats = getPharmacyStats(p.id);
+                    return (
+                      <div 
+                        key={p.id} 
+                        onClick={() => setSelectedPharmacyId(p.id)}
+                        className="p-4 border rounded-2xl hover:border-blue-500 hover:shadow-md cursor-pointer transition bg-gray-50/50">
+                        <h4 className="font-bold text-blue-700 text-sm mb-1">{p.name}</h4>
+                        <p className="text-xs text-gray-500">Hozirgi Qarz: <span className="font-bold text-gray-900">{stats.currentBalance.toLocaleString()} so'm</span></p>
+                        <div className="mt-3 flex justify-between items-center text-xs">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${stats.statusClass}`}>
+                            {stats.currentBalance > 0 ? stats.statusText : 'Qarz yo\'q'}
+                          </span>
+                          <span className="text-blue-600 font-bold hover:underline">Tarixni ko'rish &rarr;</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MODAL OYNA: DORIXONA TARIXI VA DETAILS */}
+          {selectedPharmacyId && selectedPharmObj && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 z-50">
+              <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+                {/* Modal Header */}
+                <div className="p-5 border-b flex justify-between items-center bg-gray-50">
+                  <div>
+                    <h3 className="text-lg font-black text-gray-800">{selectedPharmObj.name}</h3>
+                    <p className="text-xs text-gray-500">Barcha olingan tovarlar va berilgan pullar tarixi</p>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedPharmacyId(null)} 
+                    className="bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full font-bold text-gray-700 flex items-center justify-center">
+                    ✕
+                  </button>
+                </div>
+
+                {/* Modal Body */}
+                <div className="p-5 overflow-y-auto space-y-4">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-gray-100 border-b text-gray-500 uppercase">
+                        <th className="p-2.5">Sana</th>
+                        <th className="p-2.5">Operatsiya Turi</th>
+                        <th className="p-2.5">Summa</th>
+                        <th className="p-2.5 bg-purple-50 text-purple-700">Qarz Qoldig'i</th>
+                        <th className="p-2.5">Mas'ul / Izoh</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {selectedPharmData.recordsHistory.length === 0 ? (
+                        <tr>
+                          <td colSpan="5" className="p-4 text-center text-gray-400">Ushbu dorixonada hali operatsiyalar mavjud emas.</td>
+                        </tr>
+                      ) : (
+                        selectedPharmData.recordsHistory.map(r => {
+                          const courier = couriers.find(c => c.id === r.courier_id);
+                          return (
+                            <tr key={r.id} className="hover:bg-gray-50">
+                              <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
+                              <td className="p-2.5 font-bold">
+                                {r.type === 'GOODS' ? (
+                                  <span className="text-blue-600">📦 Tovar olindi</span>
+                                ) : (
+                                  <span className="text-emerald-600">
+                                    💵 Pul berildi ({r.payment_type})
+                                    {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 font-bold text-gray-900">{Number(r.amount).toLocaleString()} so'm</td>
+                              <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
+                              <td className="p-2.5 text-gray-500">
+                                {courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="p-4 border-t bg-gray-50 text-right">
+                  <button 
+                    onClick={() => setSelectedPharmacyId(null)} 
+                    className="bg-gray-800 text-white font-bold px-5 py-2 rounded-xl text-xs hover:bg-black transition">
+                    Yopish
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
