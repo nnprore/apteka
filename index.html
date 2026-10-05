@@ -23,11 +23,10 @@
     const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk";
 
+    // Supabase client to'g'ri yaratilishini ta'minlaymiz
     let supabase = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } else if (window.supabase && window.supabase.createClient) {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       }
     } catch (e) {
