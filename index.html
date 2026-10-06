@@ -10,8 +10,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Supabase JS CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
+  <!-- Supabase JS CDN v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 font-sans p-2 md:p-6">
 
@@ -27,6 +27,8 @@
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      } else if (window.supabase && window.supabase.createClient) {
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       }
     } catch (e) {
       console.error("Supabase yaratishda xatolik:", e);
@@ -36,126 +38,205 @@
       const [activeTab, setActiveTab] = useState('REPORTS');
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
 
-      const [pharmacies, setPharmacies] = useState([]);
+      const [pharmacies, setPharmacies] = useState([
+        { id: 1, name: 'Dorixona #1 (Chilonzor)' },
+        { id: 2, name: 'Dorixona #2 (Yunusobod)' }
+      ]);
+
+      const [couriers, setCouriers] = useState([
+        { id: 1, full_name: 'Alijon Valiyev' },
+        { id: 2, full_name: 'Sardor Rahimov' }
+      ]);
+
       const [records, setRecords] = useState([]);
 
-      const [newPharmName, setNewPharmName] = useState('');
+      const [newPharm, setNewPharm] = useState({ name: '', initial_debt: '' });
       const [goodsForm, setGoodsForm] = useState({
         pharmacy_id: '',
-        amount: '',
+        cash_amount: '',
+        transfer_amount: '',
         date: new Date().toISOString().split('T')[0],
         comment: ''
       });
 
       const [payForm, setPayForm] = useState({
         pharmacy_id: '',
-        amount: '',
+        courier_id: '',
+        cash_amount: '',
+        transfer_amount: '',
         payment_type: 'CASH',
         date: new Date().toISOString().split('T')[0],
         for_goods_date: '',
         comment: ''
-      }); 
+      });
 
       // Ma'lumotlarni yuklab olish
-      const loadData = async () => {
-        if (!supabase) return;
-        try {
-          const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
-          if (!pharmErr && pharmRes) setPharmacies(pharmRes);
-
-          const { data: recRes, error: recErr } = await supabase.from('records').select('*');
-          if (!recErr && recRes) setRecords(recRes);
-        } catch (err) {
-          console.error("Ma'lumotlarni yuklashda tarmoq xatoligi:", err);
-        }
-      };
-
       useEffect(() => {
+        const loadData = async () => {
+          let loadedFromSupabase = false;
+
+          if (supabase) {
+            try {
+              const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
+              if (!pharmErr && pharmRes && pharmRes.length > 0) {
+                setPharmacies(pharmRes);
+                loadedFromSupabase = true;
+              }
+
+              const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
+              if (!courErr && courRes && courRes.length > 0) {
+                setCouriers(courRes);
+              }
+
+              const { data: recRes, error: recErr } = await supabase.from('records').select('*');
+              if (!recErr && recRes) {
+                setRecords(recRes);
+              }
+            } catch (err) {
+              console.error("Supabase dan o'qishda tarmoq xatoligi:", err);
+            }
+          }
+
+          if (!loadedFromSupabase) {
+            const localPharm = localStorage.getItem('pharmacies');
+            if (localPharm) setPharmacies(JSON.parse(localPharm));
+
+            const localCour = localStorage.getItem('couriers');
+            if (localCour) setCouriers(JSON.parse(localCour));
+
+            const localRec = localStorage.getItem('records');
+            if (localRec) setRecords(JSON.parse(localRec));
+          }
+        };
+
         loadData();
       }, []);
 
+      useEffect(() => {
+        localStorage.setItem('pharmacies', JSON.stringify(pharmacies));
+      }, [pharmacies]);
+
+      useEffect(() => {
+        localStorage.setItem('records', JSON.stringify(records));
+      }, [records]);
+
       const handleAddPharmacy = async (e) => {
         e.preventDefault();
-        if (!newPharmName.trim()) return alert("Dorixona nomini kiriting!");
+        if (!newPharm.name.trim()) return alert("Dorixona nomini kiriting!");
 
-        const newPName = newPharmName.trim();
+        const newPName = newPharm.name.trim();
+        const initialDebt = Number(newPharm.initial_debt) || 0;
+
+        let createdPharmId = Date.now();
+        let pharmObj = { id: createdPharmId, name: newPName };
+
         if (supabase) {
           const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
-          if (error) {
-            alert("Dorixona qo'shishda xatolik: " + error.message);
-            return;
-          }
-          if (data) {
-            setPharmacies([...pharmacies, data[0]]);
-            setNewPharmName('');
-            alert("Yangi dorixona bazaga qo'shildi!");
-            loadData();
+          if (!error && data && data[0]) {
+            pharmObj = data[0];
+            createdPharmId = data[0].id;
           }
         }
+
+        const updatedPharmacies = [...pharmacies, pharmObj];
+        setPharmacies(updatedPharmacies);
+
+        if (initialDebt > 0) {
+          const initRec = {
+            id: Date.now(),
+            pharmacy_id: createdPharmId,
+            courier_id: null,
+            type: 'GOODS',
+            amount: initialDebt,
+            transfer_amount: 0,
+            payment_type: 'INITIAL',
+            date: new Date().toISOString().split('T')[0],
+            for_goods_date: null,
+            comment: 'Boshlang‘ich qarz (Ostatka)'
+          };
+
+          if (supabase) {
+            await supabase.from('records').insert([initRec]);
+          }
+          setRecords([initRec, ...records]);
+        }
+
+        setNewPharm({ name: '', initial_debt: '' });
+        alert("Yangi dorixona muvaffaqiyatli qo'shildi!");
       };
 
       const handleAddGoods = async (e) => {
         e.preventDefault();
-        if (!goodsForm.pharmacy_id || !goodsForm.amount || !goodsForm.date) {
-          return alert("Iltimos, dorixona, summa va sanani to'ldiring!");
+        const cash = Number(goodsForm.cash_amount) || 0;
+        const transfer = Number(goodsForm.transfer_amount) || 0;
+
+        if (!goodsForm.pharmacy_id || (!cash && !transfer) || !goodsForm.date) {
+          return alert("Iltimos, dorixona, summa (naqd yoki perech) va sanani to'ldiring!");
         }
 
         const newRec = {
           pharmacy_id: Number(goodsForm.pharmacy_id),
+          courier_id: null,
           type: 'GOODS',
-          amount: Number(goodsForm.amount),
-          payment_type: '-',
+          amount: cash,
+          transfer_amount: transfer,
+          payment_type: 'GOODS_MIXED',
           date: goodsForm.date,
           for_goods_date: null,
-          comment: goodsForm.comment || ''
+          comment: goodsForm.comment
         };
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (error) {
-            alert("Tovarni saqlashda xatolik: " + error.message);
-            console.error(error);
+          if (!error && data) {
+            setRecords([data[0], ...records]);
+            setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
+            alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
             return;
           }
-          if (data) {
-            setRecords([data[0], ...records]);
-            setGoodsForm({ pharmacy_id: '', amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
-            alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
-            loadData();
-          }
         }
+
+        const fallbackRec = { ...newRec, id: Date.now() };
+        setRecords([fallbackRec, ...records]);
+        setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
+        alert("Tovar saqlandi!");
       };
 
       const handleAddPayment = async (e) => {
         e.preventDefault();
-        if (!payForm.pharmacy_id || !payForm.amount || !payForm.date) {
-          return alert("Iltimos, dorixona, summa va sanani to'ldiring!");
+        const cash = Number(payForm.cash_amount) || 0;
+        const transfer = Number(payForm.transfer_amount) || 0;
+
+        if (!payForm.pharmacy_id || (!cash && !transfer) || !payForm.date || !payForm.courier_id) {
+          return alert("Iltimos, dorixona, kuryer, summa (naqd yoki perech) va sanani to'ldiring!");
         }
 
         const newRec = {
           pharmacy_id: Number(payForm.pharmacy_id),
+          courier_id: Number(payForm.courier_id),
           type: 'PAYMENT',
-          amount: Number(payForm.amount),
-          payment_type: payForm.payment_type,
+          amount: cash,
+          transfer_amount: transfer,
+          payment_type: cash > 0 && transfer > 0 ? 'MIXED' : (cash > 0 ? 'CASH' : 'TRANSFER'),
           date: payForm.date,
           for_goods_date: payForm.for_goods_date || null,
-          comment: payForm.comment || ''
+          comment: payForm.comment
         };
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (error) {
-            alert("To'lovni saqlashda xatolik: " + error.message);
-            console.error(error);
+          if (!error && data) {
+            setRecords([data[0], ...records]);
+            setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
+            alert("To'lov bazaga saqlandi!");
             return;
           }
-          if (data) {
-            setRecords([data[0], ...records]);
-            setPayForm({ pharmacy_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
-            alert("To'lov bazaga saqlandi!");
-            loadData();
-          }
         }
+
+        const fallbackRec = { ...newRec, id: Date.now() };
+        setRecords([fallbackRec, ...records]);
+        setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
+        alert("To'lov saqlandi!");
       };
 
       const getPharmacyStats = (pharmacyId) => {
@@ -165,33 +246,40 @@
 
         const todayStr = new Date().toISOString().split('T')[0];
 
-        let totalGoods = 0;
-        let totalPayment = 0;
+        let totalGoodsCash = 0;
+        let totalGoodsTransfer = 0;
+        let totalPaymentCash = 0;
+        let totalPaymentTransfer = 0;
         let yesterdayBalance = 0;
         let unpaidBatches = [];
 
         let runningBalance = 0;
         const historyWithBalance = pharmRecs.map(r => {
+          let recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
           if (r.type === 'GOODS') {
-            runningBalance += Number(r.amount);
+            runningBalance += recTotal;
           } else if (r.type === 'PAYMENT') {
-            runningBalance -= Number(r.amount);
+            runningBalance -= recTotal;
           }
           return { ...r, balanceAfter: runningBalance };
         });
 
         pharmRecs.forEach(r => {
+          let recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
           if (r.date < todayStr) {
-            if (r.type === 'GOODS') yesterdayBalance += Number(r.amount);
-            if (r.type === 'PAYMENT') yesterdayBalance -= Number(r.amount);
+            if (r.type === 'GOODS') yesterdayBalance += recTotal;
+            if (r.type === 'PAYMENT') yesterdayBalance -= recTotal;
           }
 
           if (r.type === 'GOODS') {
-            totalGoods += Number(r.amount);
-            unpaidBatches.push({ date: r.date, amount: Number(r.amount) });
+            totalGoodsCash += Number(r.amount || 0);
+            totalGoodsTransfer += Number(r.transfer_amount || 0);
+            unpaidBatches.push({ date: r.date, amount: recTotal });
           } else if (r.type === 'PAYMENT') {
-            totalPayment += Number(r.amount);
-            let payRem = Number(r.amount);
+            totalPaymentCash += Number(r.amount || 0);
+            totalPaymentTransfer += Number(r.transfer_amount || 0);
+            
+            let payRem = recTotal;
             while (payRem > 0 && unpaidBatches.length > 0) {
               if (unpaidBatches[0].amount <= payRem) {
                 payRem -= unpaidBatches[0].amount;
@@ -204,6 +292,8 @@
           }
         });
 
+        const totalGoods = totalGoodsCash + totalGoodsTransfer;
+        const totalPayment = totalPaymentCash + totalPaymentTransfer;
         const currentBalance = totalGoods - totalPayment;
 
         let oldestDays = 0;
@@ -225,20 +315,24 @@
         }
 
         return {
+          totalGoodsCash,
+          totalGoodsTransfer,
           totalGoods,
+          totalPaymentCash,
+          totalPaymentTransfer,
           totalPayment,
           currentBalance,
           yesterdayBalance,
           oldestDays,
           statusClass,
           statusText,
-          recordsHistory: historyWithBalance.reverse()
+          recordsHistory: historyWithBalance
         };
       };
 
       const selectedPharmData = selectedPharmacyId ? getPharmacyStats(selectedPharmacyId) : null;
-      const selectedPharmObj = pharmacies ? pharmacies.find(p => p.id === selectedPharmacyId) : null;
-      const selectedPharmGoodsDates = payForm.pharmacy_id && pharmacies 
+      const selectedPharmObj = pharmacies.find(p => p.id === selectedPharmacyId);
+      const selectedPharmGoodsDates = payForm.pharmacy_id 
         ? records.filter(r => r.pharmacy_id === Number(payForm.pharmacy_id) && r.type === 'GOODS')
         : [];
 
@@ -264,21 +358,21 @@
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-yellow-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Sariq Zonada (30+ kun)</p>
                   <h2 className="text-2xl font-black text-yellow-600 mt-1">
-                    {pharmacies && pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 30 && getPharmacyStats(p.id).oldestDays < 45).length} ta dorixona
+                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 30 && getPharmacyStats(p.id).oldestDays < 45).length} ta dorixona
                   </h2>
                 </div>
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-red-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Qizil Zonada (45+ kun)</p>
                   <h2 className="text-2xl font-black text-red-600 mt-1">
-                    {pharmacies && pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 45).length} ta dorixona
+                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 45).length} ta dorixona
                   </h2>
                 </div>
 
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-purple-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Jami Umumi Qarz Summasi</p>
                   <h2 className="text-2xl font-black text-purple-700 mt-1">
-                    {pharmacies ? pharmacies.reduce((acc, p) => acc + getPharmacyStats(p.id).currentBalance, 0).toLocaleString() : 0} so'm
+                    {pharmacies.reduce((acc, p) => acc + getPharmacyStats(p.id).currentBalance, 0).toLocaleString()} so'm
                   </h2>
                 </div>
               </div>
@@ -294,38 +388,36 @@
                       <tr className="bg-gray-50 border-b text-gray-500 text-xs uppercase">
                         <th className="p-3">Dorixona Nomi</th>
                         <th className="p-3">Kechagi Qoldiq</th>
-                        <th className="p-3">Jami Tovar</th>
-                        <th className="p-3">Jami To'langan</th>
+                        <th className="p-3">Naqd Tovar</th>
+                        <th className="p-3">Perech. Tovar</th>
+                        <th className="p-3">Naqd To'lov</th>
+                        <th className="p-3">Perech. To'lov</th>
                         <th className="p-3">Bugungi Qoldiq (Qarz)</th>
                         <th className="p-3">Eng Eski Qarz</th>
                         <th className="p-3">Holat</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y text-xs">
-                      {(!pharmacies || pharmacies.length === 0) ? (
-                        <tr>
-                          <td colSpan="7" className="p-4 text-center text-gray-400">Hozircha dorixonalar mavjud emas. "Dorixonalar" bo'limidan qo'shing.</td>
-                        </tr>
-                      ) : (
-                        pharmacies.map(p => {
-                          const stats = getPharmacyStats(p.id);
-                          return (
-                            <tr key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="hover:bg-blue-50 cursor-pointer transition">
-                              <td className="p-3 font-bold text-blue-700 underline">{p.name}</td>
-                              <td className="p-3 font-medium text-gray-600">{stats.yesterdayBalance.toLocaleString()} so'm</td>
-                              <td className="p-3 text-blue-600 font-semibold">{stats.totalGoods.toLocaleString()} so'm</td>
-                              <td className="p-3 text-emerald-600 font-semibold">{stats.totalPayment.toLocaleString()} so'm</td>
-                              <td className="p-3 font-black text-gray-900">{stats.currentBalance.toLocaleString()} so'm</td>
-                              <td className="p-3 font-bold text-gray-700">{stats.currentBalance > 0 ? `${stats.oldestDays} kun` : 'Qarz yo\'q'}</td>
-                              <td className="p-3">
-                                <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${stats.statusClass}`}>
-                                  {stats.currentBalance > 0 ? stats.statusText : 'To\'langan ✅'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
+                      {pharmacies.map(p => {
+                        const stats = getPharmacyStats(p.id);
+                        return (
+                          <tr key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="hover:bg-blue-50 cursor-pointer transition">
+                            <td className="p-3 font-bold text-blue-700 underline">{p.name}</td>
+                            <td className="p-3 font-medium text-gray-600">{stats.yesterdayBalance.toLocaleString()} so'm</td>
+                            <td className="p-3 text-blue-600 font-semibold">{stats.totalGoodsCash.toLocaleString()} so'm</td>
+                            <td className="p-3 text-indigo-600 font-semibold">{stats.totalGoodsTransfer.toLocaleString()} so'm</td>
+                            <td className="p-3 text-emerald-600 font-semibold">{stats.totalPaymentCash.toLocaleString()} so'm</td>
+                            <td className="p-3 text-teal-600 font-semibold">{stats.totalPaymentTransfer.toLocaleString()} so'm</td>
+                            <td className="p-3 font-black text-gray-900">{stats.currentBalance.toLocaleString()} so'm</td>
+                            <td className="p-3 font-bold text-gray-700">{stats.currentBalance > 0 ? `${stats.oldestDays} kun` : 'Qarz yo\'q'}</td>
+                            <td className="p-3">
+                              <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${stats.statusClass}`}>
+                                {stats.currentBalance > 0 ? stats.statusText : 'To\'langan ✅'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -341,12 +433,18 @@
                   <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
                   <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={goodsForm.pharmacy_id} onChange={e => setGoodsForm({...goodsForm, pharmacy_id: e.target.value})}>
                     <option value="">-- Tanlang --</option>
-                    {pharmacies && pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="block font-semibold mb-1">Berilgan Tovar Summasi (so'm)</label>
-                  <input type="number" placeholder="Masalan: 2500000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.amount} onChange={e => setGoodsForm({...goodsForm, amount: e.target.value})} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold mb-1">Naqd Tovar Summasi (so'm)</label>
+                    <input type="number" placeholder="Masalan: 2000000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.cash_amount} onChange={e => setGoodsForm({...goodsForm, cash_amount: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Perechisleniye Tovar Summasi (so'm)</label>
+                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-indigo-600" value={goodsForm.transfer_amount} onChange={e => setGoodsForm({...goodsForm, transfer_amount: e.target.value})} />
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Topshirilgan Sana</label>
@@ -369,7 +467,7 @@
                   <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
                   <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={payForm.pharmacy_id} onChange={e => setPayForm({...payForm, pharmacy_id: e.target.value, for_goods_date: ''})}>
                     <option value="">-- Tanlang --</option>
-                    {pharmacies && pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -377,20 +475,26 @@
                   <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.for_goods_date} onChange={e => setPayForm({...payForm, for_goods_date: e.target.value})}>
                     <option value="">-- Tanlang (ixtiyoriy) --</option>
                     {selectedPharmGoodsDates.map(r => (
-                      <option key={r.id} value={r.date}>{r.date} sanasidagi tovar ({Number(r.amount).toLocaleString()} so'm)</option>
+                      <option key={r.id} value={r.date}>{r.date} sanasidagi tovar (Naqd: {Number(r.amount || 0).toLocaleString()}, Perech: {Number(r.transfer_amount || 0).toLocaleString()} so'm)</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Olingan Pul Summasi (so'm)</label>
-                  <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.amount} onChange={e => setPayForm({...payForm, amount: e.target.value})} />
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1">To'lov Turi</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.payment_type} onChange={e => setPayForm({...payForm, payment_type: e.target.value})}>
-                    <option value="CASH">💵 Naqd Pul</option>
-                    <option value="TRANSFER">🏦 Perechisleniye (Bank)</option>
+                  <label className="block font-semibold mb-1">Pulni Olgan Kuryer / Inkassator</label>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.courier_id} onChange={e => setPayForm({...payForm, courier_id: e.target.value})}>
+                    <option value="">-- Tanlang --</option>
+                    {couriers.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                   </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-semibold mb-1">Naqd Pul Summasi (so'm)</label>
+                    <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.cash_amount} onChange={e => setPayForm({...payForm, cash_amount: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="block font-semibold mb-1">Perechisleniye Pul Summasi (so'm)</label>
+                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-teal-600" value={payForm.transfer_amount} onChange={e => setPayForm({...payForm, transfer_amount: e.target.value})} />
+                  </div>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Olingan Sana</label>
@@ -407,48 +511,62 @@
 
           {activeTab === 'PHARMACIES' && (
             <div className="space-y-6">
-              <div className="bg-white p-6 rounded-2xl shadow-sm max-w-xl mx-auto">
-                <h3 className="text-base font-bold text-gray-800 mb-3">➕ Yangi Dorixona Qo'shish</h3>
-                <form onSubmit={handleAddPharmacy} className="flex gap-2">
-                  <input type="text" placeholder="Dorixona nomi va manzili..." className="w-full p-3 border rounded-xl text-xs font-semibold" value={newPharmName} onChange={e => setNewPharmName(e.target.value)} />
-                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition">Qo'shish</button>
+              {/* Tezkor Dorixona Qo'shish Bloki */}
+              <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-purple-100 max-w-4xl mx-auto">
+                <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
+                  <span>➕</span> Yangi Dorixona Qo'shish
+                </h3>
+                <form onSubmit={handleAddPharmacy} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="Dorixona nomi va manzili..." 
+                    className="p-3 border rounded-xl text-xs font-semibold" 
+                    value={newPharm.name} 
+                    onChange={e => setNewPharm({...newPharm, name: e.target.value})} 
+                  />
+                  <input 
+                    type="number" 
+                    placeholder="Eski qarz / Boshlang'ich ostatka..." 
+                    className="p-3 border rounded-xl text-xs font-semibold text-purple-700" 
+                    value={newPharm.initial_debt} 
+                    onChange={e => setNewPharm({...newPharm, initial_debt: e.target.value})} 
+                  />
+                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-sm">
+                    Dorixonani Qo'shish
+                  </button>
                 </form>
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-sm">
                 <h3 className="text-base font-bold text-gray-800 mb-4">🏥 Barcha Dorixonalar Ro'yxati</h3>
-                {(!pharmacies || pharmacies.length === 0) ? (
-                  <p className="text-xs text-gray-400 text-center py-6">Hozircha dorixonalar mavjud emas. Yuqoridagi forma orqali yangi dorixona qo'shing.</p>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {pharmacies.map(p => {
-                      const stats = getPharmacyStats(p.id);
-                      return (
-                        <div key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="p-4 border rounded-2xl hover:border-blue-500 hover:shadow-md cursor-pointer transition bg-gray-50/50">
-                          <h4 className="font-bold text-blue-700 text-sm mb-1">{p.name}</h4>
-                          <p className="text-xs text-gray-500">Hozirgi Qarz: <span className="font-bold text-gray-900">{stats.currentBalance.toLocaleString()} so'm</span></p>
-                          <div className="mt-3 flex justify-between items-center text-xs">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${stats.statusClass}`}>
-                              {stats.currentBalance > 0 ? stats.statusText : 'Qarz yo\'q'}
-                            </span>
-                            <span className="text-blue-600 font-bold hover:underline">Tarixni ko'rish &rarr;</span>
-                          </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pharmacies.map(p => {
+                    const stats = getPharmacyStats(p.id);
+                    return (
+                      <div key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="p-4 border rounded-2xl hover:border-blue-500 hover:shadow-md cursor-pointer transition bg-gray-50/50">
+                        <h4 className="font-bold text-blue-700 text-sm mb-1">{p.name}</h4>
+                        <p className="text-xs text-gray-500">Hozirgi Qarz: <span className="font-bold text-gray-900">{stats.currentBalance.toLocaleString()} so'm</span></p>
+                        <div className="mt-3 flex justify-between items-center text-xs">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${stats.statusClass}`}>
+                            {stats.currentBalance > 0 ? stats.statusText : 'Qarz yo\'q'}
+                          </span>
+                          <span className="text-blue-600 font-bold hover:underline">Tarixni ko'rish &rarr;</span>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
 
           {selectedPharmacyId && selectedPharmObj && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 z-50">
-              <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+              <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
                 <div className="p-5 border-b flex justify-between items-center bg-gray-50">
                   <div>
                     <h3 className="text-lg font-black text-gray-800">{selectedPharmObj.name}</h3>
-                    <p className="text-xs text-gray-500">Barcha olingan tovarlar va berilgan pullar tarixi</p>
+                    <p className="text-xs text-gray-500">Barcha olingan tovarlar va to'lovlar tarixi (Naqd va Perech alohida ustunlarda)</p>
                   </div>
                   <button onClick={() => setSelectedPharmacyId(null)} className="bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full font-bold text-gray-700 flex items-center justify-center">✕</button>
                 </div>
@@ -459,35 +577,52 @@
                       <tr className="bg-gray-100 border-b text-gray-500 uppercase">
                         <th className="p-2.5">Sana</th>
                         <th className="p-2.5">Operatsiya Turi</th>
-                        <th className="p-2.5">Summa</th>
+                        <th className="p-2.5">Naqd Summa</th>
+                        <th className="p-2.5">Perech. Summa</th>
                         <th className="p-2.5 bg-purple-50 text-purple-700">Qarz Qoldig'i</th>
-                        <th className="p-2.5">Izoh</th>
+                        <th className="p-2.5">Mas'ul / Izoh</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {selectedPharmData.recordsHistory.length === 0 ? (
                         <tr>
-                          <td colSpan="5" className="p-4 text-center text-gray-400">Ushbu dorixonada hali operatsiyalar mavjud emas.</td>
+                          <td colSpan="6" className="p-4 text-center text-gray-400">Ushbu dorixonada hali operatsiyalar mavjud emas.</td>
                         </tr>
                       ) : (
-                        selectedPharmData.recordsHistory.map(r => (
-                          <tr key={r.id} className="hover:bg-gray-50">
-                            <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
-                            <td className="p-2.5 font-bold">
-                              {r.type === 'GOODS' ? (
-                               <span className="text-blue-600">📦 Tovar olindi</span>
-                              ) : (
-                                <span className="text-emerald-600">
-                                  💵 Pul berildi ({r.payment_type})
-                                  {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-2.5 font-bold text-gray-900">{Number(r.amount).toLocaleString()} so'm</td>
-                            <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
-                            <td className="p-2.5 text-gray-500">{r.comment || '-'}</td>
-                          </tr>
-                        ))
+                        selectedPharmData.recordsHistory.map(r => {
+                          const courier = couriers.find(c => c.id === r.courier_id);
+                          const isGoods = r.type === 'GOODS';
+                          const cashVal = Number(r.amount || 0);
+                          const transVal = Number(r.transfer_amount || 0);
+
+                          return (
+                            <tr key={r.id} className="hover:bg-gray-50">
+                              <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
+                              <td className="p-2.5 font-bold">
+                                {isGoods ? (
+                                 <span className="text-blue-600">📦 Tovar olindi</span>
+                                ) : (
+                                  <span className="text-emerald-600">
+                                    💵 Pul berildi
+                                    {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
+                                  </span>
+                                )}
+                              </td>
+                              {/* Naqd summa: xoh tovar bo'lsin, xoh pul olish (to'lov) */}
+                              <td className="p-2.5 font-bold text-gray-900">
+                                {cashVal > 0 ? `${cashVal.toLocaleString()} so'm` : '-'}
+                              </td>
+                              {/* Perech summa: xoh tovar bo'lsin, xoh pul olish (to'lov) */}
+                              <td className="p-2.5 font-bold text-indigo-700">
+                                {transVal > 0 ? `${transVal.toLocaleString()} so'm` : '-'}
+                              </td>
+                              <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
+                              <td className="p-2.5 text-gray-500">
+                                {courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
