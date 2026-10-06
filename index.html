@@ -65,20 +65,21 @@
         comment: ''
       });
 
-      // Ma'lumotlarni faqat Supabase dan yuklab olish
+      // Ma'lumotlarni bazadan to'g'ridan-to'g'ri yuklab olish
       const loadData = async () => {
         try {
-          if (!supabase) return;
-          const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
+          const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          
+          const { data: pharmRes, error: pharmErr } = await client.from('pharmacies').select('*');
           if (pharmErr) console.error("Pharmacies xato:", pharmErr);
           else if (pharmRes) setPharmacies(pharmRes);
 
-          const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
+          const { data: courRes, error: courErr } = await client.from('couriers').select('*');
           if (!courErr && courRes && courRes.length > 0) {
             setCouriers(courRes);
           }
 
-          const { data: recRes, error: recErr } = await supabase.from('records').select('*');
+          const { data: recRes, error: recErr } = await client.from('records').select('*');
           if (recErr) console.error("Records xato:", recErr);
           else if (recRes) setRecords(recRes);
         } catch (err) {
