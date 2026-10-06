@@ -10,7 +10,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Supabase JS CDN (Barqaror eski versiya ishlatiladi) -->
+  <!-- Supabase JS CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 </head>
 <body class="bg-gray-100 font-sans p-2 md:p-6">
@@ -21,14 +21,12 @@
     const { useState, useEffect } = React;
 
     const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co";
-    // Agar Supabase panelidan 'Legacy anon' kalitini olsangiz, uni shu yerga qo'ying
     const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk";
 
     let supabase = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log("Supabase muvaffaqiyatli ishga tushirildi!");
       }
     } catch (e) {
       console.error("Supabase yaratishda xatolik:", e);
@@ -39,7 +37,6 @@
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
 
       const [pharmacies, setPharmacies] = useState([]);
-      const [couriers, setCouriers] = useState([{ id: 1, full_name: 'Oybek' }]);
       const [records, setRecords] = useState([]);
 
       const [newPharmName, setNewPharmName] = useState('');
@@ -52,7 +49,6 @@
 
       const [payForm, setPayForm] = useState({
         pharmacy_id: '',
-        courier_id: '',
         amount: '',
         payment_type: 'CASH',
         date: new Date().toISOString().split('T')[0],
@@ -61,31 +57,20 @@
       }); 
 
       // Ma'lumotlarni yuklab olish
+      const loadData = async () => {
+        if (!supabase) return;
+        try {
+          const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
+          if (!pharmErr && pharmRes) setPharmacies(pharmRes);
+
+          const { data: recRes, error: recErr } = await supabase.from('records').select('*');
+          if (!recErr && recRes) setRecords(recRes);
+        } catch (err) {
+          console.error("Ma'lumotlarni yuklashda tarmoq xatoligi:", err);
+        }
+      };
+
       useEffect(() => {
-        const loadData = async () => {
-          if (supabase) {
-            try {
-              console.log("Supabase'dan ma'lumotlar o'qilmoqda...");
-              
-              const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
-              if (pharmErr) console.error("Pharmacies xatoligi:", pharmErr);
-              else if (pharmRes) setPharmacies(pharmRes);
-
-              const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
-              if (courErr) console.error("Couriers xatoligi:", courErr);
-              else if (courRes) setCouriers(courRes);
-
-              const { data: recRes, error: recErr } = await supabase.from('records').select('*');
-              if (recErr) console.error("Records xatoligi:", recErr);
-              else if (recRes) setRecords(recRes);
-            } catch (err) {
-              console.error("Supabase tarmoq xatoligi:", err);
-            }
-          } else {
-            console.warn("Supabase klienti mavjud emas!");
-          }
-        };
-
         loadData();
       }, []);
 
@@ -94,18 +79,17 @@
         if (!newPharmName.trim()) return alert("Dorixona nomini kiriting!");
 
         const newPName = newPharmName.trim();
-
         if (supabase) {
           const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
           if (error) {
-            console.error("Dorixona qo'shishda Supabase xatoligi:", error);
-            alert("Bazaga yozishda xatolik: " + error.message);
+            alert("Dorixona qo'shishda xatolik: " + error.message);
             return;
           }
           if (data) {
             setPharmacies([...pharmacies, data[0]]);
             setNewPharmName('');
             alert("Yangi dorixona bazaga qo'shildi!");
+            loadData();
           }
         }
       };
@@ -118,58 +102,58 @@
 
         const newRec = {
           pharmacy_id: Number(goodsForm.pharmacy_id),
-          courier_id: null,
           type: 'GOODS',
           amount: Number(goodsForm.amount),
           payment_type: '-',
           date: goodsForm.date,
           for_goods_date: null,
-          comment: goodsForm.comment
+          comment: goodsForm.comment || ''
         };
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
           if (error) {
-            console.error("Tovar qo'shishda xatolik:", error);
-            alert("Xatolik: " + error.message);
+            alert("Tovarni saqlashda xatolik: " + error.message);
+            console.error(error);
             return;
           }
           if (data) {
             setRecords([data[0], ...records]);
             setGoodsForm({ pharmacy_id: '', amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
             alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
+            loadData();
           }
         }
       };
 
       const handleAddPayment = async (e) => {
         e.preventDefault();
-        if (!payForm.pharmacy_id || !payForm.amount || !payForm.date || !payForm.courier_id) {
-          return alert("Iltimos, barcha zaruriy maydonlarni to'ldiring!");
+        if (!payForm.pharmacy_id || !payForm.amount || !payForm.date) {
+          return alert("Iltimos, dorixona, summa va sanani to'ldiring!");
         }
 
         const newRec = {
           pharmacy_id: Number(payForm.pharmacy_id),
-          courier_id: Number(payForm.courier_id),
           type: 'PAYMENT',
           amount: Number(payForm.amount),
           payment_type: payForm.payment_type,
           date: payForm.date,
           for_goods_date: payForm.for_goods_date || null,
-          comment: payForm.comment
+          comment: payForm.comment || ''
         };
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
           if (error) {
-            console.error("To'lov qo'shishda xatolik:", error);
-            alert("Xatolik: " + error.message);
+            alert("To'lovni saqlashda xatolik: " + error.message);
+            console.error(error);
             return;
           }
           if (data) {
             setRecords([data[0], ...records]);
-            setPayForm({ pharmacy_id: '', courier_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
+            setPayForm({ pharmacy_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
             alert("To'lov bazaga saqlandi!");
+            loadData();
           }
         }
       };
@@ -398,13 +382,6 @@
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Pulni Olgan Kuryer / Inkassator</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.courier_id} onChange={e => setPayForm({...payForm, courier_id: e.target.value})}>
-                    <option value="">-- Tanlang --</option>
-                    {couriers && couriers.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                  </select>
-                </div>
-                <div>
                   <label className="block font-semibold mb-1">Olingan Pul Summasi (so'm)</label>
                   <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.amount} onChange={e => setPayForm({...payForm, amount: e.target.value})} />
                 </div>
@@ -484,7 +461,7 @@
                         <th className="p-2.5">Operatsiya Turi</th>
                         <th className="p-2.5">Summa</th>
                         <th className="p-2.5 bg-purple-50 text-purple-700">Qarz Qoldig'i</th>
-                        <th className="p-2.5">Mas'ul / Izoh</th>
+                        <th className="p-2.5">Izoh</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -493,29 +470,24 @@
                           <td colSpan="5" className="p-4 text-center text-gray-400">Ushbu dorixonada hali operatsiyalar mavjud emas.</td>
                         </tr>
                       ) : (
-                        selectedPharmData.recordsHistory.map(r => {
-                          const courier = couriers ? couriers.find(c => c.id === r.courier_id) : null;
-                          return (
-                            <tr key={r.id} className="hover:bg-gray-50">
-                              <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
-                              <td className="p-2.5 font-bold">
-                                {r.type === 'GOODS' ? (
-                                 <span className="text-blue-600">📦 Tovar olindi</span>
-                                ) : (
-                                  <span className="text-emerald-600">
-                                    💵 Pul berildi ({r.payment_type})
-                                    {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2.5 font-bold text-gray-900">{Number(r.amount).toLocaleString()} so'm</td>
-                              <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
-                              <td className="p-2.5 text-gray-500">
-                                {courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}
-                              </td>
-                            </tr>
-                          );
-                        })
+                        selectedPharmData.recordsHistory.map(r => (
+                          <tr key={r.id} className="hover:bg-gray-50">
+                            <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
+                            <td className="p-2.5 font-bold">
+                              {r.type === 'GOODS' ? (
+                               <span className="text-blue-600">📦 Tovar olindi</span>
+                              ) : (
+                                <span className="text-emerald-600">
+                                  💵 Pul berildi ({r.payment_type})
+                                  {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2.5 font-bold text-gray-900">{Number(r.amount).toLocaleString()} so'm</td>
+                            <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
+                            <td className="p-2.5 text-gray-500">{r.comment || '-'}</td>
+                          </tr>
+                        ))
                       )}
                     </tbody>
                   </table>
