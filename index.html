@@ -38,11 +38,16 @@
       const [activeTab, setActiveTab] = useState('REPORTS');
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
 
-      const [pharmacies, setPharmacies] = useState([]);
+      const [pharmacies, setPharmacies] = useState([
+        { id: 1, name: 'Dorixona #1 (Chilonzor)' },
+        { id: 2, name: 'Dorixona #2 (Yunusobod)' }
+      ]);
+
       const [couriers, setCouriers] = useState([
         { id: 1, full_name: 'Alijon Valiyev' },
         { id: 2, full_name: 'Sardor Rahimov' }
       ]);
+
       const [records, setRecords] = useState([]);
 
       const [newPharm, setNewPharm] = useState({ name: '', initial_debt: '' });
@@ -65,31 +70,55 @@
         comment: ''
       });
 
-      // Ma'lumotlarni bazadan to'g'ridan-to'g'ri yuklab olish
-      const loadData = async () => {
-        try {
-          const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-          
-          const { data: pharmRes, error: pharmErr } = await client.from('pharmacies').select('*');
-          if (pharmErr) console.error("Pharmacies xato:", pharmErr);
-          else if (pharmRes) setPharmacies(pharmRes);
+      // Ma'lumotlarni yuklab olish
+      useEffect(() => {
+        const loadData = async () => {
+          let loadedFromSupabase = false;
 
-          const { data: courRes, error: courErr } = await client.from('couriers').select('*');
-          if (!courErr && courRes && courRes.length > 0) {
-            setCouriers(courRes);
+          if (supabase) {
+            try {
+              const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
+              if (!pharmErr && pharmRes && pharmRes.length > 0) {
+                setPharmacies(pharmRes);
+                loadedFromSupabase = true;
+              }
+
+              const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
+              if (!courErr && courRes && courRes.length > 0) {
+                setCouriers(courRes);
+              }
+
+              const { data: recRes, error: recErr } = await supabase.from('records').select('*');
+              if (!recErr && recRes) {
+                setRecords(recRes);
+              }
+            } catch (err) {
+              console.error("Supabase dan o'qishda tarmoq xatoligi:", err);
+            }
           }
 
-          const { data: recRes, error: recErr } = await client.from('records').select('*');
-          if (recErr) console.error("Records xato:", recErr);
-          else if (recRes) setRecords(recRes);
-        } catch (err) {
-          console.error("Supabase dan o'qishda tarmoq xatoligi:", err);
-        }
-      };
+          if (!loadedFromSupabase) {
+            const localPharm = localStorage.getItem('pharmacies');
+            if (localPharm) setPharmacies(JSON.parse(localPharm));
 
-      useEffect(() => {
+            const localCour = localStorage.getItem('couriers');
+            if (localCour) setCouriers(JSON.parse(localCour));
+
+            const localRec = localStorage.getItem('records');
+            if (localRec) setRecords(JSON.parse(localRec));
+          }
+        };
+
         loadData();
       }, []);
+
+      useEffect(() => {
+        localStorage.setItem('pharmacies', JSON.stringify(pharmacies));
+      }, [pharmacies]);
+
+      useEffect(() => {
+        localStorage.setItem('records', JSON.stringify(records));
+      }, [records]);
 
       const handleAddPharmacy = async (e) => {
         e.preventDefault();
@@ -98,37 +127,46 @@
         const newPName = newPharm.name.trim();
         const initialDebt = Number(newPharm.initial_debt) || 0;
 
-        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const { data, error } = await client.from('pharmacies').insert([{ name: newPName }]).select();
-        
-        if (error) {
-          alert("Dorixona qo'shishda xatolik: " + error.message);
-          return;
-        }
+        let createdPharmId = Date.now();
+        let pharmObj = { id: createdPharmId, name: newPName };
 
-        if (data && data[0]) {
-          const createdPharmId = data[0].id;
-          
-          if (initialDebt > 0) {
-            const initRec = {
-              pharmacy_id: createdPharmId,
-              courier_id: null,
-              type: 'GOODS',
-              amount: initialDebt,
-              transfer_amount: 0,
-              payment_type: 'INITIAL',
-              date: new Date().toISOString().split('T')[0],
-              for_goods_date: null,
-              comment: 'Boshlang‘ich qarz (Ostatka)'
-            };
-
-            await client.from('records').insert([initRec]);
+        if (supabase) {
+          const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
+          if (!error && data && data[0]) {
+            pharmObj = data[0];
+            createdPharmId = data[0].id;
+          } else if (error) {
+            console.error("Supabase dorixona qo'shish xatoligi:", error);
+            alert("Bazaga yozishda xatolik: " + error.message);
+            return;
           }
-
-          setNewPharm({ name: '', initial_debt: '' });
-          alert("Yangi dorixona muvaffaqiyatli qo'shildi!");
-          loadData();
         }
+
+        const updatedPharmacies = [...pharmacies, pharmObj];
+        setPharmacies(updatedPharmacies);
+
+        if (initialDebt > 0) {
+          const initRec = {
+            id: Date.now(),
+            pharmacy_id: createdPharmId,
+            courier_id: null,
+            type: 'GOODS',
+            amount: initialDebt,
+            transfer_amount: 0,
+            payment_type: 'INITIAL',
+            date: new Date().toISOString().split('T')[0],
+            for_goods_date: null,
+            comment: 'Boshlang‘ich qarz (Ostatka)'
+          };
+
+          if (supabase) {
+            await supabase.from('records').insert([initRec]);
+          }
+          setRecords([initRec, ...records]);
+        }
+
+        setNewPharm({ name: '', initial_debt: '' });
+        alert("Yangi dorixona muvaffaqiyatli qo'shildi!");
       };
 
       const handleAddGoods = async (e) => {
@@ -137,7 +175,7 @@
         const transfer = Number(goodsForm.transfer_amount) || 0;
 
         if (!goodsForm.pharmacy_id || (!cash && !transfer) || !goodsForm.date) {
-          return alert("Iltimos, dorixona, summa va sanani to'ldiring!");
+          return alert("Iltimos, dorixona, summa (naqd yoki perech) va sanani to'ldiring!");
         }
 
         const newRec = {
@@ -149,20 +187,26 @@
           payment_type: 'GOODS_MIXED',
           date: goodsForm.date,
           for_goods_date: null,
-          comment: goodsForm.comment || ''
+          comment: goodsForm.comment
         };
 
-        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const { error } = await client.from('records').insert([newRec]);
-        
-        if (error) {
-          alert("Tovarni saqlashda xatolik: " + error.message);
-          return;
+        if (supabase) {
+          const { data, error } = await supabase.from('records').insert([newRec]).select();
+          if (!error && data) {
+            setRecords([data[0], ...records]);
+            setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
+            alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
+            return;
+          } else if (error) {
+            alert("Tovarni saqlashda xatolik: " + error.message);
+            return;
+          }
         }
 
+        const fallbackRec = { ...newRec, id: Date.now() };
+        setRecords([fallbackRec, ...records]);
         setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
-        alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
-        loadData();
+        alert("Tovar saqlandi!");
       };
 
       const handleAddPayment = async (e) => {
@@ -171,7 +215,7 @@
         const transfer = Number(payForm.transfer_amount) || 0;
 
         if (!payForm.pharmacy_id || (!cash && !transfer) || !payForm.date || !payForm.courier_id) {
-          return alert("Iltimos, dorixona, kuryer, summa va sanani to'ldiring!");
+          return alert("Iltimos, dorixona, kuryer, summa (naqd yoki perech) va sanani to'ldiring!");
         }
 
         const newRec = {
@@ -183,20 +227,26 @@
           payment_type: cash > 0 && transfer > 0 ? 'MIXED' : (cash > 0 ? 'CASH' : 'TRANSFER'),
           date: payForm.date,
           for_goods_date: payForm.for_goods_date || null,
-          comment: payForm.comment || ''
+          comment: payForm.comment
         };
 
-        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        const { error } = await client.from('records').insert([newRec]);
-        
-        if (error) {
-          alert("To'lovni saqlashda xatolik: " + error.message);
-          return;
+        if (supabase) {
+          const { data, error } = await supabase.from('records').insert([newRec]).select();
+          if (!error && data) {
+            setRecords([data[0], ...records]);
+            setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
+            alert("To'lov bazaga saqlandi!");
+            return;
+          } else if (error) {
+            alert("To'lovni saqlashda xatolik: " + error.message);
+            return;
+          }
         }
 
+        const fallbackRec = { ...newRec, id: Date.now() };
+        setRecords([fallbackRec, ...records]);
         setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
-        alert("To'lov bazaga saqlandi!");
-        loadData();
+        alert("To'lov saqlandi!");
       };
 
       const getPharmacyStats = (pharmacyId) => {
