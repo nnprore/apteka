@@ -67,9 +67,8 @@
 
       // Ma'lumotlarni faqat Supabase dan yuklab olish
       const loadData = async () => {
-        if (!supabase) return;
-
         try {
+          if (!supabase) return;
           const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
           if (pharmErr) console.error("Pharmacies xato:", pharmErr);
           else if (pharmRes) setPharmacies(pharmRes);
@@ -98,9 +97,9 @@
         const newPName = newPharm.name.trim();
         const initialDebt = Number(newPharm.initial_debt) || 0;
 
-        if (!supabase) return alert("Supabase ishlamayapti!");
-
-        const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
+        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { data, error } = await client.from('pharmacies').insert([{ name: newPName }]).select();
+        
         if (error) {
           alert("Dorixona qo'shishda xatolik: " + error.message);
           return;
@@ -122,7 +121,7 @@
               comment: 'Boshlang‘ich qarz (Ostatka)'
             };
 
-            await supabase.from('records').insert([initRec]);
+            await client.from('records').insert([initRec]);
           }
 
           setNewPharm({ name: '', initial_debt: '' });
@@ -152,9 +151,9 @@
           comment: goodsForm.comment || ''
         };
 
-        if (!supabase) return alert("Supabase ishlamayapti!");
-
-        const { error } = await supabase.from('records').insert([newRec]);
+        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { error } = await client.from('records').insert([newRec]);
+        
         if (error) {
           alert("Tovarni saqlashda xatolik: " + error.message);
           return;
@@ -186,9 +185,9 @@
           comment: payForm.comment || ''
         };
 
-        if (!supabase) return alert("Supabase ishlamayapti!");
-
-        const { error } = await supabase.from('records').insert([newRec]);
+        const client = supabase || window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { error } = await client.from('records').insert([newRec]);
+        
         if (error) {
           alert("To'lovni saqlashda xatolik: " + error.message);
           return;
