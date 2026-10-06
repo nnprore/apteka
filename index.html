@@ -10,8 +10,8 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Supabase JS CDN v2 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase JS CDN (Barqaror eski versiya ishlatiladi) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 </head>
 <body class="bg-gray-100 font-sans p-2 md:p-6">
 
@@ -21,13 +21,14 @@
     const { useState, useEffect } = React;
 
     const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co";
+    // Agar Supabase panelidan 'Legacy anon' kalitini olsangiz, uni shu yerga qo'ying
     const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk";
 
-    // Supabase client to'g'ri yaratilishini ta'minlaymiz
     let supabase = null;
     try {
       if (window.supabase && typeof window.supabase.createClient === 'function') {
         supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        console.log("Supabase muvaffaqiyatli ishga tushirildi!");
       }
     } catch (e) {
       console.error("Supabase yaratishda xatolik:", e);
@@ -38,11 +39,7 @@
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
 
       const [pharmacies, setPharmacies] = useState([]);
-
-      const [couriers, setCouriers] = useState([
-        { id: 1, full_name: 'Oybek' }
-      ]);
-
+      const [couriers, setCouriers] = useState([{ id: 1, full_name: 'Oybek' }]);
       const [records, setRecords] = useState([]);
 
       const [newPharmName, setNewPharmName] = useState('');
@@ -66,52 +63,31 @@
       // Ma'lumotlarni yuklab olish
       useEffect(() => {
         const loadData = async () => {
-          let loadedFromSupabase = false;
-
           if (supabase) {
             try {
+              console.log("Supabase'dan ma'lumotlar o'qilmoqda...");
+              
               const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
-              if (!pharmErr && pharmRes && pharmRes.length > 0) {
-                setPharmacies(pharmRes);
-                loadedFromSupabase = true;
-              }
+              if (pharmErr) console.error("Pharmacies xatoligi:", pharmErr);
+              else if (pharmRes) setPharmacies(pharmRes);
 
               const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
-              if (!courErr && courRes && courRes.length > 0) {
-                setCouriers(courRes);
-              }
+              if (courErr) console.error("Couriers xatoligi:", courErr);
+              else if (courRes) setCouriers(courRes);
 
               const { data: recRes, error: recErr } = await supabase.from('records').select('*');
-              if (!recErr && recRes) {
-                setRecords(recRes);
-              }
+              if (recErr) console.error("Records xatoligi:", recErr);
+              else if (recRes) setRecords(recRes);
             } catch (err) {
-              console.error("Supabase dan o'qishda tarmoq xatoligi:", err);
+              console.error("Supabase tarmoq xatoligi:", err);
             }
-          }
-
-          if (!loadedFromSupabase) {
-            const localPharm = localStorage.getItem('pharmacies');
-            if (localPharm) setPharmacies(JSON.parse(localPharm));
-
-            const localCour = localStorage.getItem('couriers');
-            if (localCour) setCouriers(JSON.parse(localCour));
-
-            const localRec = localStorage.getItem('records');
-            if (localRec) setRecords(JSON.parse(localRec));
+          } else {
+            console.warn("Supabase klienti mavjud emas!");
           }
         };
 
         loadData();
       }, []);
-
-      useEffect(() => {
-        localStorage.setItem('pharmacies', JSON.stringify(pharmacies));
-      }, [pharmacies]);
-
-      useEffect(() => {
-        localStorage.setItem('records', JSON.stringify(records));
-      }, [records]);
 
       const handleAddPharmacy = async (e) => {
         e.preventDefault();
@@ -121,18 +97,17 @@
 
         if (supabase) {
           const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
-          if (!error && data) {
+          if (error) {
+            console.error("Dorixona qo'shishda Supabase xatoligi:", error);
+            alert("Bazaga yozishda xatolik: " + error.message);
+            return;
+          }
+          if (data) {
             setPharmacies([...pharmacies, data[0]]);
             setNewPharmName('');
             alert("Yangi dorixona bazaga qo'shildi!");
-            return;
           }
         }
-
-        const localP = { id: Date.now(), name: newPName };
-        setPharmacies([...pharmacies, localP]);
-        setNewPharmName('');
-        alert("Yangi dorixona saqlandi!");
       };
 
       const handleAddGoods = async (e) => {
@@ -154,18 +129,17 @@
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (!error && data) {
+          if (error) {
+            console.error("Tovar qo'shishda xatolik:", error);
+            alert("Xatolik: " + error.message);
+            return;
+          }
+          if (data) {
             setRecords([data[0], ...records]);
             setGoodsForm({ pharmacy_id: '', amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
             alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
-            return;
           }
         }
-
-        const fallbackRec = { ...newRec, id: Date.now() };
-        setRecords([fallbackRec, ...records]);
-        setGoodsForm({ pharmacy_id: '', amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
-        alert("Tovar saqlandi!");
       };
 
       const handleAddPayment = async (e) => {
@@ -187,18 +161,17 @@
 
         if (supabase) {
           const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (!error && data) {
+          if (error) {
+            console.error("To'lov qo'shishda xatolik:", error);
+            alert("Xatolik: " + error.message);
+            return;
+          }
+          if (data) {
             setRecords([data[0], ...records]);
             setPayForm({ pharmacy_id: '', courier_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
             alert("To'lov bazaga saqlandi!");
-            return;
           }
         }
-
-        const fallbackRec = { ...newRec, id: Date.now() };
-        setRecords([fallbackRec, ...records]);
-        setPayForm({ pharmacy_id: '', courier_id: '', amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
-        alert("To'lov saqlandi!");
       };
 
       const getPharmacyStats = (pharmacyId) => {
