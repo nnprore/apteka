@@ -3,8 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dorixona Qarz va Inkassatsiya Tizimi</title>
-
+  <title>Дорихона Қарз ва Инкассация Тизими</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Дорихона">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="icon" href="icon-192.png">
+ 
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,35 +20,35 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 font-sans p-2 md:p-6">
-
+ 
   <div id="root"></div>
-
+ 
   <script type="text/babel">
     const { useState, useEffect } = React;
-
+ 
     const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk";
-
+ 
     let sb = null;
     try {
       sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch (e) {
       console.error("Supabase yaratishda xatolik:", e);
     }
-
-    // Mahalliy (Toshkent) vaqt bo'yicha bugungi sana
+ 
+    // Маҳаллий (Тошкент) вақт бўйича бугунги сана
     const todayLocal = () => {
       const d = new Date();
       return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
     };
-
+ 
     // ---------- LOGIN ----------
     function Login() {
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
       const [loading, setLoading] = useState(false);
-
+ 
       const handleLogin = async (e) => {
         e.preventDefault();
         setError('');
@@ -49,56 +57,51 @@
         const loginEmail = loginName.includes('@') ? loginName : loginName + '@dorixona.uz';
         const { error } = await sb.auth.signInWithPassword({ email: loginEmail, password });
         setLoading(false);
-        if (error) setError("Kirishda xatolik: email yoki parol noto'g'ri.");
+        if (error) setError("Кириш хатоси: логин ёки парол нотўғри.");
       };
-
+ 
       return (
         <div className="min-h-[80vh] flex items-center justify-center">
           <form onSubmit={handleLogin} className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm space-y-4">
-            <h1 className="text-xl font-black text-gray-800 text-center">🏥 Dorixona Boshqaruv Tizimi</h1>
-            <p className="text-xs text-gray-500 text-center">Davom etish uchun tizimga kiring</p>
-            <input type="text" autoCapitalize="none" placeholder="Login (masalan: admin)" className="w-full p-3 border rounded-xl text-sm" value={email} onChange={e => setEmail(e.target.value)} required />
-            <input type="password" placeholder="Parol" className="w-full p-3 border rounded-xl text-sm" value={password} onChange={e => setPassword(e.target.value)} required />
+            <h1 className="text-xl font-black text-gray-800 text-center">🏥 Дорихона Бошқарув Тизими</h1>
+            <p className="text-xs text-gray-500 text-center">Давом этиш учун тизимга киринг</p>
+            <input type="text" autoCapitalize="none" placeholder="Логин (масалан: admin)" className="w-full p-3 border rounded-xl text-sm" value={email} onChange={e => setEmail(e.target.value)} required />
+            <input type="password" placeholder="Парол" className="w-full p-3 border rounded-xl text-sm" value={password} onChange={e => setPassword(e.target.value)} required />
             {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
             <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm">
-              {loading ? 'Kirilmoqda...' : 'Kirish'}
+              {loading ? 'Кирилмоқда...' : 'Кириш'}
             </button>
           </form>
         </div>
       );
     }
-
-    // ---------- ASOSIY ILOVA ----------
+ 
+    // ---------- АСОСИЙ ИЛОВА ----------
     function Dashboard({ userEmail }) {
       const [activeTab, setActiveTab] = useState('REPORTS');
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
       const [pharmacies, setPharmacies] = useState([]);
-      const [couriers, setCouriers] = useState([]);
       const [records, setRecords] = useState([]);
       const [loaded, setLoaded] = useState(false);
-
+ 
       const [newPharm, setNewPharm] = useState({ name: '', initial_debt: '' });
       const [goodsForm, setGoodsForm] = useState({
         pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: ''
       });
       const [payForm, setPayForm] = useState({
-        pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '',
-        date: todayLocal(), for_goods_date: '', comment: ''
+        pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: ''
       });
-
-      // Ma'lumotlarni bazadan yuklash (har 30 soniyada yangilanadi)
+ 
+      // Маълумотларни базадан юклаш (ҳар 30 сонияда янгиланади)
       const loadData = async () => {
         const { data: pharmRes, error: e1 } = await sb.from('pharmacies').select('*').order('id');
-        if (e1) { console.error(e1); alert("Dorixonalarni o'qishda xatolik: " + e1.message); return; }
+        if (e1) { console.error(e1); alert("Дорихоналарни ўқишда хатолик: " + e1.message); return; }
         setPharmacies(pharmRes || []);
-
-        const { data: courRes } = await sb.from('couriers').select('*').order('id');
-        setCouriers(courRes || []);
-
+ 
         let all = [], from = 0;
         while (true) {
           const { data, error } = await sb.from('records').select('*').order('id').range(from, from + 999);
-          if (error) { alert("Yozuvlarni o'qishda xatolik: " + error.message); break; }
+          if (error) { alert("Ёзувларни ўқишда хатолик: " + error.message); break; }
           all = all.concat(data);
           if (data.length < 1000) break;
           from += 1000;
@@ -106,24 +109,24 @@
         setRecords(all.reverse());
         setLoaded(true);
       };
-
+ 
       useEffect(() => {
         loadData();
         const timer = setInterval(loadData, 30000);
         return () => clearInterval(timer);
       }, []);
-
+ 
       const handleAddPharmacy = async (e) => {
         e.preventDefault();
         const name = newPharm.name.trim();
-        if (!name) return alert("Dorixona nomini kiriting!");
+        if (!name) return alert("Дорихона номини киритинг!");
         const initialDebt = Number(newPharm.initial_debt) || 0;
-
+ 
         const { data, error } = await sb.from('pharmacies').insert([{ name }]).select();
-        if (error) return alert("Bazaga yozishda xatolik: " + error.message);
+        if (error) return alert("Базага ёзишда хатолик: " + error.message);
         const pharmObj = data[0];
         setPharmacies([...pharmacies, pharmObj]);
-
+ 
         if (initialDebt > 0) {
           const initRec = {
             pharmacy_id: pharmObj.id,
@@ -134,25 +137,25 @@
             payment_type: 'INITIAL',
             date: todayLocal(),
             for_goods_date: null,
-            comment: 'Boshlang‘ich qarz (Ostatka)'
+            comment: 'Бошланғич қарз (Остатка)'
           };
           const { data: recData, error: recErr } = await sb.from('records').insert([initRec]).select();
-          if (recErr) return alert("Boshlang'ich qarzni saqlashda xatolik: " + recErr.message);
+          if (recErr) return alert("Бошланғич қарзни сақлашда хатолик: " + recErr.message);
           setRecords([recData[0], ...records]);
         }
-
+ 
         setNewPharm({ name: '', initial_debt: '' });
-        alert("Yangi dorixona muvaffaqiyatli qo'shildi!");
+        alert("Янги дорихона муваффақиятли қўшилди!");
       };
-
+ 
       const handleAddGoods = async (e) => {
         e.preventDefault();
         const cash = Number(goodsForm.cash_amount) || 0;
         const transfer = Number(goodsForm.transfer_amount) || 0;
         if (!goodsForm.pharmacy_id || (!cash && !transfer) || !goodsForm.date) {
-          return alert("Iltimos, dorixona, summa (naqd yoki perech) va sanani to'ldiring!");
+          return alert("Илтимос, дорихона, сумма (нақд ёки перечисление) ва санани тўлдиринг!");
         }
-
+ 
         const newRec = {
           pharmacy_id: Number(goodsForm.pharmacy_id),
           courier_id: null,
@@ -164,53 +167,53 @@
           for_goods_date: null,
           comment: goodsForm.comment
         };
-
+ 
         const { data, error } = await sb.from('records').insert([newRec]).select();
-        if (error) return alert("Tovarni saqlashda xatolik: " + error.message);
+        if (error) return alert("Товарни сақлашда хатолик: " + error.message);
         setRecords([data[0], ...records]);
         setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: '' });
-        alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
+        alert("Товар муваффақиятли топширилди ва қарзга ёзилди!");
       };
-
+ 
       const handleAddPayment = async (e) => {
         e.preventDefault();
         const cash = Number(payForm.cash_amount) || 0;
         const transfer = Number(payForm.transfer_amount) || 0;
-        if (!payForm.pharmacy_id || (!cash && !transfer) || !payForm.date || !payForm.courier_id) {
-          return alert("Iltimos, dorixona, kuryer, summa (naqd yoki perech) va sanani to'ldiring!");
+        if (!payForm.pharmacy_id || (!cash && !transfer) || !payForm.date) {
+          return alert("Илтимос, дорихона, сумма (нақд ёки перечисление) ва санани тўлдиринг!");
         }
-
+ 
         const newRec = {
           pharmacy_id: Number(payForm.pharmacy_id),
-          courier_id: Number(payForm.courier_id),
+          courier_id: null,
           type: 'PAYMENT',
           amount: cash,
           transfer_amount: transfer,
           payment_type: cash > 0 && transfer > 0 ? 'MIXED' : (cash > 0 ? 'CASH' : 'TRANSFER'),
           date: payForm.date,
-          for_goods_date: payForm.for_goods_date || null,
+          for_goods_date: null,
           comment: payForm.comment
         };
-
+ 
         const { data, error } = await sb.from('records').insert([newRec]).select();
-        if (error) return alert("To'lovni saqlashda xatolik: " + error.message);
+        if (error) return alert("Тўловни сақлашда хатолик: " + error.message);
         setRecords([data[0], ...records]);
-        setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), for_goods_date: '', comment: '' });
-        alert("To'lov bazaga saqlandi!");
+        setPayForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: '' });
+        alert("Тўлов базага сақланди!");
       };
-
+ 
       const getPharmacyStats = (pharmacyId) => {
         const pharmRecs = records
           .filter(r => r.pharmacy_id === pharmacyId)
           .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
-
+ 
         const todayStr = todayLocal();
-
+ 
         let totalGoodsCash = 0, totalGoodsTransfer = 0;
         let totalPaymentCash = 0, totalPaymentTransfer = 0;
         let yesterdayBalance = 0;
         let unpaidBatches = [];
-
+ 
         let runningBalance = 0;
         const historyWithBalance = pharmRecs.map(r => {
           const recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
@@ -218,14 +221,14 @@
           else if (r.type === 'PAYMENT') runningBalance -= recTotal;
           return { ...r, balanceAfter: runningBalance };
         });
-
+ 
         pharmRecs.forEach(r => {
           const recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
           if (r.date < todayStr) {
             if (r.type === 'GOODS') yesterdayBalance += recTotal;
             if (r.type === 'PAYMENT') yesterdayBalance -= recTotal;
           }
-
+ 
           if (r.type === 'GOODS') {
             totalGoodsCash += Number(r.amount || 0);
             totalGoodsTransfer += Number(r.transfer_amount || 0);
@@ -233,7 +236,7 @@
           } else if (r.type === 'PAYMENT') {
             totalPaymentCash += Number(r.amount || 0);
             totalPaymentTransfer += Number(r.transfer_amount || 0);
-
+ 
             let payRem = recTotal;
             while (payRem > 0 && unpaidBatches.length > 0) {
               if (unpaidBatches[0].amount <= payRem) {
@@ -246,28 +249,28 @@
             }
           }
         });
-
+ 
         const totalGoods = totalGoodsCash + totalGoodsTransfer;
         const totalPayment = totalPaymentCash + totalPaymentTransfer;
         const currentBalance = totalGoods - totalPayment;
-
+ 
         let oldestDays = 0;
         if (currentBalance > 0 && unpaidBatches.length > 0) {
           const oldestDate = new Date(unpaidBatches[0].date);
           const diffTime = Math.abs(new Date() - oldestDate);
           oldestDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         }
-
+ 
         let statusClass = 'bg-green-100 text-green-800 border-green-300';
-        let statusText = 'Muntazam';
+        let statusText = 'Мунтазам';
         if (oldestDays >= 45) {
           statusClass = 'bg-red-500 text-white font-bold animate-pulse';
-          statusText = `QIZIL XAVF (${oldestDays} kun!)`;
+          statusText = `ҚИЗИЛ ХАВФ (${oldestDays} кун!)`;
         } else if (oldestDays >= 30) {
           statusClass = 'bg-yellow-400 text-gray-900 font-bold';
-          statusText = `SARIQ (${oldestDays} kun)`;
+          statusText = `САРИҚ (${oldestDays} кун)`;
         }
-
+ 
         return {
           totalGoodsCash, totalGoodsTransfer, totalGoods,
           totalPaymentCash, totalPaymentTransfer, totalPayment,
@@ -275,77 +278,74 @@
           statusClass, statusText, recordsHistory: historyWithBalance
         };
       };
-
+ 
       const selectedPharmData = selectedPharmacyId ? getPharmacyStats(selectedPharmacyId) : null;
       const selectedPharmObj = pharmacies.find(p => p.id === selectedPharmacyId);
-      const selectedPharmGoodsDates = payForm.pharmacy_id
-        ? records.filter(r => r.pharmacy_id === Number(payForm.pharmacy_id) && r.type === 'GOODS')
-        : [];
-
+ 
       const allStats = pharmacies.map(p => getPharmacyStats(p.id));
-
+ 
       return (
         <div className="max-w-6xl mx-auto space-y-6">
           <header className="bg-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
-              <h1 className="text-2xl font-black text-gray-800">🏥 Dorixona Boshqaruv Tizimi</h1>
+              <h1 className="text-2xl font-black text-gray-800">🏥 Дорихона Бошқарув Тизими</h1>
               <p className="text-xs text-gray-500 mt-0.5">
-                Tovar topshirish, pul olish va qarz muddati tahlili · {userEmail}
-                <button onClick={() => sb.auth.signOut()} className="ml-2 text-red-600 font-bold hover:underline">Chiqish</button>
+                Товар топшириш, пул олиш ва қарз муддати таҳлили · {userEmail}
+                <button onClick={() => sb.auth.signOut()} className="ml-2 text-red-600 font-bold hover:underline">Чиқиш</button>
               </p>
             </div>
-
+ 
             <div className="flex flex-wrap gap-2 bg-gray-100 p-1.5 rounded-xl text-xs font-bold">
-              <button onClick={() => setActiveTab('REPORTS')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'REPORTS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>📊 Hisobotlar</button>
-              <button onClick={() => setActiveTab('GOODS')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'GOODS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>📦 Tovar Berish</button>
-              <button onClick={() => setActiveTab('PAYMENT')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PAYMENT' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>💵 Pul Olish</button>
-              <button onClick={() => setActiveTab('PHARMACIES')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PHARMACIES' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>🏥 Dorixonalar</button>
+              <button onClick={() => setActiveTab('REPORTS')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'REPORTS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>📊 Ҳисоботлар</button>
+              <button onClick={() => setActiveTab('GOODS')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'GOODS' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>📦 Товар Бериш</button>
+              <button onClick={() => setActiveTab('PAYMENT')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PAYMENT' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>💵 Пул Олиш</button>
+              <button onClick={() => setActiveTab('PHARMACIES')} className={`px-4 py-2.5 rounded-lg transition ${activeTab === 'PHARMACIES' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-600 hover:text-black'}`}>🏥 Дорихоналар</button>
             </div>
           </header>
-
-          {!loaded && <p className="text-center text-sm text-gray-500">Ma'lumotlar yuklanmoqda...</p>}
-
+ 
+          {!loaded && <p className="text-center text-sm text-gray-500">Маълумотлар юкланмоқда...</p>}
+ 
           {activeTab === 'REPORTS' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-yellow-500">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Sariq Zonada (30+ kun)</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Сариқ Зонада (30+ кун)</p>
                   <h2 className="text-2xl font-black text-yellow-600 mt-1">
-                    {allStats.filter(s => s.oldestDays >= 30 && s.oldestDays < 45).length} ta dorixona
+                    {allStats.filter(s => s.oldestDays >= 30 && s.oldestDays < 45).length} та дорихона
                   </h2>
                 </div>
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-red-500">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Qizil Zonada (45+ kun)</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Қизил Зонада (45+ кун)</p>
                   <h2 className="text-2xl font-black text-red-600 mt-1">
-                    {allStats.filter(s => s.oldestDays >= 45).length} ta dorixona
+                    {allStats.filter(s => s.oldestDays >= 45).length} та дорихона
                   </h2>
                 </div>
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-purple-500">
-                  <p className="text-xs font-semibold text-gray-500 uppercase">Jami Umumi Qarz Summasi</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase">Жами Умумий Қарз Суммаси</p>
                   <h2 className="text-2xl font-black text-purple-700 mt-1">
-                    {allStats.reduce((acc, s) => acc + s.currentBalance, 0).toLocaleString()} so'm
+                    {allStats.reduce((acc, s) => acc + s.currentBalance, 0).toLocaleString()} сўм
                   </h2>
                 </div>
               </div>
-
+ 
               <div className="bg-white p-6 rounded-2xl shadow-sm">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-base font-bold text-gray-800">📊 Dorixonalar Balansi va Qarz Muddatlari</h3>
-                  <span className="text-xs text-gray-400">Tarixni ko'rish uchun dorixona ustiga bosing</span>
+                  <h3 className="text-base font-bold text-gray-800">📊 Дорихоналар Баланси ва Қарз Муддатлари</h3>
+                  <span className="text-xs text-gray-400">Тарихни кўриш учун дорихона устига босинг</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-gray-50 border-b text-gray-500 text-xs uppercase">
-                        <th className="p-3">Dorixona Nomi</th>
-                        <th className="p-3">Kechagi Qoldiq</th>
-                        <th className="p-3">Naqd Tovar</th>
-                        <th className="p-3">Perech. Tovar</th>
-                        <th className="p-3">Naqd To'lov</th>
-                        <th className="p-3">Perech. To'lov</th>
-                        <th className="p-3">Bugungi Qoldiq (Qarz)</th>
-                        <th className="p-3">Eng Eski Qarz</th>
-                        <th className="p-3">Holat</th>
+                        <th className="p-3">Дорихона Номи</th>
+                        <th className="p-3">Кечаги Қолдиқ</th>
+                        <th className="p-3">Нақд Товар</th>
+                        <th className="p-3">Перech. Товар</th>
+                        <th className="p-3">Нақд Тўлов</th>
+                        <th className="p-3">Перech. Тўлов</th>
+                        <th className="p-3">Бугунги Қолдиқ (Қарз)</th>
+                        <th className="p-3">Энг Эски Қарз</th>
+                        <th className="p-3">Ҳолат</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y text-xs">
@@ -354,16 +354,16 @@
                         return (
                           <tr key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="hover:bg-blue-50 cursor-pointer transition">
                             <td className="p-3 font-bold text-blue-700 underline">{p.name}</td>
-                            <td className="p-3 font-medium text-gray-600">{stats.yesterdayBalance.toLocaleString()} so'm</td>
-                            <td className="p-3 text-blue-600 font-semibold">{stats.totalGoodsCash.toLocaleString()} so'm</td>
-                            <td className="p-3 text-indigo-600 font-semibold">{stats.totalGoodsTransfer.toLocaleString()} so'm</td>
-                            <td className="p-3 text-emerald-600 font-semibold">{stats.totalPaymentCash.toLocaleString()} so'm</td>
-                            <td className="p-3 text-teal-600 font-semibold">{stats.totalPaymentTransfer.toLocaleString()} so'm</td>
-                            <td className="p-3 font-black text-gray-900">{stats.currentBalance.toLocaleString()} so'm</td>
-                            <td className="p-3 font-bold text-gray-700">{stats.currentBalance > 0 ? `${stats.oldestDays} kun` : 'Qarz yo\'q'}</td>
+                            <td className="p-3 font-medium text-gray-600">{stats.yesterdayBalance.toLocaleString()} сўм</td>
+                            <td className="p-3 text-blue-600 font-semibold">{stats.totalGoodsCash.toLocaleString()} сўм</td>
+                            <td className="p-3 text-indigo-600 font-semibold">{stats.totalGoodsTransfer.toLocaleString()} сўм</td>
+                            <td className="p-3 text-emerald-600 font-semibold">{stats.totalPaymentCash.toLocaleString()} сўм</td>
+                            <td className="p-3 text-teal-600 font-semibold">{stats.totalPaymentTransfer.toLocaleString()} сўм</td>
+                            <td className="p-3 font-black text-gray-900">{stats.currentBalance.toLocaleString()} сўм</td>
+                            <td className="p-3 font-bold text-gray-700">{stats.currentBalance > 0 ? `${stats.oldestDays} кун` : 'Қарз йўқ'}</td>
                             <td className="p-3">
                               <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${stats.statusClass}`}>
-                                {stats.currentBalance > 0 ? stats.statusText : 'To\'langan ✅'}
+                                {stats.currentBalance > 0 ? stats.statusText : 'Тўланган ✅'}
                               </span>
                             </td>
                           </tr>
@@ -375,119 +375,103 @@
               </div>
             </div>
           )}
-
+ 
           {activeTab === 'GOODS' && (
             <div className="bg-white p-6 rounded-2xl shadow-sm max-w-2xl mx-auto">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">📦 Dorixonaga Tovar Berish (Qarz Yozish)</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">📦 Дорихонага Товар Бериш (Қарз Ёзиш)</h3>
               <form onSubmit={handleAddGoods} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
+                  <label className="block font-semibold mb-1">Дорихонани Танланг</label>
                   <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={goodsForm.pharmacy_id} onChange={e => setGoodsForm({ ...goodsForm, pharmacy_id: e.target.value })}>
-                    <option value="">-- Tanlang --</option>
+                    <option value="">-- Танланг --</option>
                     {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-semibold mb-1">Naqd Tovar Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 2000000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.cash_amount} onChange={e => setGoodsForm({ ...goodsForm, cash_amount: e.target.value })} />
+                    <label className="block font-semibold mb-1">Нақд Товар Суммаси (сўм)</label>
+                    <input type="number" placeholder="Масалан: 2000000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.cash_amount} onChange={e => setGoodsForm({ ...goodsForm, cash_amount: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block font-semibold mb-1">Perechisleniye Tovar Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-indigo-600" value={goodsForm.transfer_amount} onChange={e => setGoodsForm({ ...goodsForm, transfer_amount: e.target.value })} />
+                    <label className="block font-semibold mb-1">Перечисление Товар Суммаси (сўм)</label>
+                    <input type="number" placeholder="Масалан: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-indigo-600" value={goodsForm.transfer_amount} onChange={e => setGoodsForm({ ...goodsForm, transfer_amount: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Topshirilgan Sana</label>
+                  <label className="block font-semibold mb-1">Топширилган Сана</label>
                   <input type="date" className="w-full p-3 border rounded-xl font-bold" value={goodsForm.date} onChange={e => setGoodsForm({ ...goodsForm, date: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Izoh / Nakladnoy Raqami</label>
-                  <input type="text" placeholder="Masalan: Nakladnoy #4501" className="w-full p-3 border rounded-xl" value={goodsForm.comment} onChange={e => setGoodsForm({ ...goodsForm, comment: e.target.value })} />
+                  <label className="block font-semibold mb-1">Изоҳ / Накладной Рақами</label>
+                  <input type="text" placeholder="Масалан: Накладной #4501" className="w-full p-3 border rounded-xl" value={goodsForm.comment} onChange={e => setGoodsForm({ ...goodsForm, comment: e.target.value })} />
                 </div>
-                <button type="submit" className="w-full bg-blue-600 text-white font-bold p-3.5 rounded-xl hover:bg-blue-700 shadow-md text-sm transition mt-4">Tovarni Saqlash va Qarzga Kiritish</button>
+                <button type="submit" className="w-full bg-blue-600 text-white font-bold p-3.5 rounded-xl hover:bg-blue-700 shadow-md text-sm transition mt-4">Товарни Сақлаш ва Қарзга Киритиш</button>
               </form>
             </div>
           )}
-
+ 
           {activeTab === 'PAYMENT' && (
             <div className="bg-white p-6 rounded-2xl shadow-sm max-w-2xl mx-auto">
-              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">💵 Dorixonadan Pul Olish (Inkassatsiya)</h3>
+              <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">💵 Дорихонадан Пул Олиш (Инкассация)</h3>
               <form onSubmit={handleAddPayment} className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={payForm.pharmacy_id} onChange={e => setPayForm({ ...payForm, pharmacy_id: e.target.value, for_goods_date: '' })}>
-                    <option value="">-- Tanlang --</option>
+                  <label className="block font-semibold mb-1">Дорихонани Танланг</label>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={payForm.pharmacy_id} onChange={e => setPayForm({ ...payForm, pharmacy_id: e.target.value })}>
+                    <option value="">-- Танланг --</option>
                     {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1">Qaysi Kungi Tovar Uchun Olinmoqda?</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.for_goods_date} onChange={e => setPayForm({ ...payForm, for_goods_date: e.target.value })}>
-                    <option value="">-- Tanlang (ixtiyoriy) --</option>
-                    {selectedPharmGoodsDates.map(r => (
-                      <option key={r.id} value={r.date}>{r.date} sanasidagi tovar (Naqd: {Number(r.amount || 0).toLocaleString()}, Perech: {Number(r.transfer_amount || 0).toLocaleString()} so'm)</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold mb-1">Pulni Olgan Kuryer / Inkassator</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.courier_id} onChange={e => setPayForm({ ...payForm, courier_id: e.target.value })}>
-                    <option value="">-- Tanlang --</option>
-                    {couriers.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block font-semibold mb-1">Naqd Pul Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.cash_amount} onChange={e => setPayForm({ ...payForm, cash_amount: e.target.value })} />
+                    <label className="block font-semibold mb-1">Нақд Пул Суммаси (сўм)</label>
+                    <input type="number" placeholder="Масалан: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.cash_amount} onChange={e => setPayForm({ ...payForm, cash_amount: e.target.value })} />
                   </div>
                   <div>
-                    <label className="block font-semibold mb-1">Perechisleniye Pul Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-teal-600" value={payForm.transfer_amount} onChange={e => setPayForm({ ...payForm, transfer_amount: e.target.value })} />
+                    <label className="block font-semibold mb-1">Перечисление Пул Суммаси (сўм)</label>
+                    <input type="number" placeholder="Масалан: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-teal-600" value={payForm.transfer_amount} onChange={e => setPayForm({ ...payForm, transfer_amount: e.target.value })} />
                   </div>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Olingan Sana</label>
+                  <label className="block font-semibold mb-1">Олинган Сана</label>
                   <input type="date" className="w-full p-3 border rounded-xl font-bold" value={payForm.date} onChange={e => setPayForm({ ...payForm, date: e.target.value })} />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Izoh</label>
-                  <input type="text" placeholder="Izoh kiriting..." className="w-full p-3 border rounded-xl" value={payForm.comment} onChange={e => setPayForm({ ...payForm, comment: e.target.value })} />
+                  <label className="block font-semibold mb-1">Изоҳ</label>
+                  <input type="text" placeholder="Изоҳ киритинг..." className="w-full p-3 border rounded-xl" value={payForm.comment} onChange={e => setPayForm({ ...payForm, comment: e.target.value })} />
                 </div>
-                <button type="submit" className="w-full bg-emerald-600 text-white font-bold p-3.5 rounded-xl hover:bg-emerald-700 shadow-md text-sm transition mt-4">To'lovni Saqlash</button>
+                <button type="submit" className="w-full bg-emerald-600 text-white font-bold p-3.5 rounded-xl hover:bg-emerald-700 shadow-md text-sm transition mt-4">Тўловни Сақлаш</button>
               </form>
             </div>
           )}
-
+ 
           {activeTab === 'PHARMACIES' && (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-purple-100 max-w-4xl mx-auto">
                 <h3 className="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
-                  <span>➕</span> Yangi Dorixona Qo'shish
+                  <span>➕</span> Янги Дорихона Қўшиш
                 </h3>
                 <form onSubmit={handleAddPharmacy} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <input type="text" placeholder="Dorixona nomi va manzili..." className="p-3 border rounded-xl text-xs font-semibold" value={newPharm.name} onChange={e => setNewPharm({ ...newPharm, name: e.target.value })} />
-                  <input type="number" placeholder="Eski qarz / Boshlang'ich ostatka..." className="p-3 border rounded-xl text-xs font-semibold text-purple-700" value={newPharm.initial_debt} onChange={e => setNewPharm({ ...newPharm, initial_debt: e.target.value })} />
-                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-sm">Dorixonani Qo'shish</button>
+                  <input type="text" placeholder="Дорихона номи ва манзили..." className="p-3 border rounded-xl text-xs font-semibold" value={newPharm.name} onChange={e => setNewPharm({ ...newPharm, name: e.target.value })} />
+                  <input type="number" placeholder="Эски қарз / Бошланғич остатка..." className="p-3 border rounded-xl text-xs font-semibold text-purple-700" value={newPharm.initial_debt} onChange={e => setNewPharm({ ...newPharm, initial_debt: e.target.value })} />
+                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-sm">Дорихонани Қўшиш</button>
                 </form>
               </div>
-
+ 
               <div className="bg-white p-6 rounded-2xl shadow-sm">
-                <h3 className="text-base font-bold text-gray-800 mb-4">🏥 Barcha Dorixonalar Ro'yxati</h3>
-                {pharmacies.length === 0 && <p className="text-xs text-gray-400">Hali dorixona qo'shilmagan.</p>}
+                <h3 className="text-base font-bold text-gray-800 mb-4">🏥 Барча Дорихоналар Рўйхати</h3>
+                {pharmacies.length === 0 && <p className="text-xs text-gray-400">Ҳали дорихона қўшилмаган.</p>}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pharmacies.map(p => {
                     const stats = getPharmacyStats(p.id);
                     return (
                       <div key={p.id} onClick={() => setSelectedPharmacyId(p.id)} className="p-4 border rounded-2xl hover:border-blue-500 hover:shadow-md cursor-pointer transition bg-gray-50/50">
                         <h4 className="font-bold text-blue-700 text-sm mb-1">{p.name}</h4>
-                        <p className="text-xs text-gray-500">Hozirgi Qarz: <span className="font-bold text-gray-900">{stats.currentBalance.toLocaleString()} so'm</span></p>
+                        <p className="text-xs text-gray-500">Ҳозирги Қарз: <span className="font-bold text-gray-900">{stats.currentBalance.toLocaleString()} сўм</span></p>
                         <div className="mt-3 flex justify-between items-center text-xs">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${stats.statusClass}`}>
-                            {stats.currentBalance > 0 ? stats.statusText : 'Qarz yo\'q'}
+                            {stats.currentBalance > 0 ? stats.statusText : 'Қарз йўқ'}
                           </span>
-                          <span className="text-blue-600 font-bold hover:underline">Tarixni ko'rish &rarr;</span>
+                          <span className="text-blue-600 font-bold hover:underline">Тарихни кўриш &rarr;</span>
                         </div>
                       </div>
                     );
@@ -496,38 +480,37 @@
               </div>
             </div>
           )}
-
+ 
           {selectedPharmacyId && selectedPharmObj && selectedPharmData && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 z-50">
               <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
                 <div className="p-5 border-b flex justify-between items-center bg-gray-50">
                   <div>
                     <h3 className="text-lg font-black text-gray-800">{selectedPharmObj.name}</h3>
-                    <p className="text-xs text-gray-500">Barcha olingan tovarlar va to'lovlar tarixi (Naqd va Perech alohida ustunlarda)</p>
+                    <p className="text-xs text-gray-500">Барча олинган товарлар ва тўловлар тарихи (Нақд ва Перech алоҳида устунларда)</p>
                   </div>
                   <button onClick={() => setSelectedPharmacyId(null)} className="bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full font-bold text-gray-700 flex items-center justify-center">✕</button>
                 </div>
-
+ 
                 <div className="p-5 overflow-auto space-y-4">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-gray-100 border-b text-gray-500 uppercase">
-                        <th className="p-2.5">Sana</th>
-                        <th className="p-2.5">Operatsiya Turi</th>
-                        <th className="p-2.5">Naqd Summa</th>
-                        <th className="p-2.5">Perech. Summa</th>
-                        <th className="p-2.5 bg-purple-50 text-purple-700">Qarz Qoldig'i</th>
-                        <th className="p-2.5">Mas'ul / Izoh</th>
+                        <th className="p-2.5">Сана</th>
+                        <th className="p-2.5">Операция Тури</th>
+                        <th className="p-2.5">Нақд Сумма</th>
+                        <th className="p-2.5">Перech. Сумма</th>
+                        <th className="p-2.5 bg-purple-50 text-purple-700">Қарз Қолдиғи</th>
+                        <th className="p-2.5">Изоҳ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {selectedPharmData.recordsHistory.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="p-4 text-center text-gray-400">Ushbu dorixonada hali operatsiyalar mavjud emas.</td>
+                          <td colSpan="6" className="p-4 text-center text-gray-400">Ушбу дорихонада ҳали операциялар мавжуд эмас.</td>
                         </tr>
                       ) : (
                         selectedPharmData.recordsHistory.map(r => {
-                          const courier = couriers.find(c => c.id === r.courier_id);
                           const isGoods = r.type === 'GOODS';
                           const cashVal = Number(r.amount || 0);
                           const transVal = Number(r.transfer_amount || 0);
@@ -536,18 +519,15 @@
                               <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
                               <td className="p-2.5 font-bold">
                                 {isGoods ? (
-                                  <span className="text-blue-600">📦 Tovar olindi</span>
+                                  <span className="text-blue-600">📦 Товар олинди</span>
                                 ) : (
-                                  <span className="text-emerald-600">
-                                    💵 Pul berildi
-                                    {r.for_goods_date && <span className="block text-[10px] text-gray-500">({r.for_goods_date} kungi tovar uchun)</span>}
-                                  </span>
+                                  <span className="text-emerald-600">💵 Пул берилди</span>
                                 )}
                               </td>
-                              <td className="p-2.5 font-bold text-gray-900">{cashVal > 0 ? `${cashVal.toLocaleString()} so'm` : '-'}</td>
-                              <td className="p-2.5 font-bold text-indigo-700">{transVal > 0 ? `${transVal.toLocaleString()} so'm` : '-'}</td>
-                              <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
-                              <td className="p-2.5 text-gray-500">{courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}</td>
+                              <td className="p-2.5 font-bold text-gray-900">{cashVal > 0 ? `${cashVal.toLocaleString()} сўм` : '-'}</td>
+                              <td className="p-2.5 font-bold text-indigo-700">{transVal > 0 ? `${transVal.toLocaleString()} сўм` : '-'}</td>
+                              <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} сўм</td>
+                              <td className="p-2.5 text-gray-500">{r.comment || '-'}</td>
                             </tr>
                           );
                         })
@@ -555,9 +535,9 @@
                     </tbody>
                   </table>
                 </div>
-
+ 
                 <div className="p-4 border-t bg-gray-50 text-right">
-                  <button onClick={() => setSelectedPharmacyId(null)} className="bg-gray-800 text-white font-bold px-5 py-2 rounded-xl text-xs hover:bg-black transition">Yopish</button>
+                  <button onClick={() => setSelectedPharmacyId(null)} className="bg-gray-800 text-white font-bold px-5 py-2 rounded-xl text-xs hover:bg-black transition">Ёпиш</button>
                 </div>
               </div>
             </div>
@@ -565,12 +545,12 @@
         </div>
       );
     }
-
-    // ---------- KIRISH NUQTASI ----------
+ 
+    // ---------- КИРИШ НУҚТАСИ ----------
     function App() {
       const [session, setSession] = useState(null);
       const [checking, setChecking] = useState(true);
-
+ 
       useEffect(() => {
         if (!sb) { setChecking(false); return; }
         sb.auth.getSession().then(({ data }) => {
@@ -580,14 +560,19 @@
         const { data } = sb.auth.onAuthStateChange((_event, s) => setSession(s));
         return () => data.subscription.unsubscribe();
       }, []);
-
-      if (!sb) return <p className="text-center text-red-600 font-bold mt-10">Supabase ulanmadi. Internetni tekshiring va sahifani yangilang.</p>;
-      if (checking) return <p className="text-center text-gray-500 mt-10">Yuklanmoqda...</p>;
+ 
+      if (!sb) return <p className="text-center text-red-600 font-bold mt-10">Supabase уланмади. Интернетни текширинг ва саҳифани янгиланг.</p>;
+      if (checking) return <p className="text-center text-gray-500 mt-10">Юкланмоқда...</p>;
       if (!session) return <Login />;
       return <Dashboard userEmail={session.user.email} />;
     }
-
+ 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   </script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(console.error));
+}
+</script>
 </body>
 </html>
