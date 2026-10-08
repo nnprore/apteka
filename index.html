@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dorixona Qarz va Inkassatsiya Tizimi</title>
 
-  <!-- React, React-DOM, Babel, TailwindCSS -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Supabase JS CDN v2 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 font-sans p-2 md:p-6">
@@ -23,146 +21,124 @@
     const SUPABASE_URL = "https://kyndaiwlycrizxmxzdzc.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_pfIm00-YFuEhsmrdsz3RTw_OygGjQvk";
 
-    let supabase = null;
+    let sb = null;
     try {
-      if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      } else if (window.supabase && window.supabase.createClient) {
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      }
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     } catch (e) {
       console.error("Supabase yaratishda xatolik:", e);
     }
 
-    function App() {
+    // Mahalliy (Toshkent) vaqt bo'yicha bugungi sana
+    const todayLocal = () => {
+      const d = new Date();
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+    };
+
+    // ---------- LOGIN ----------
+    function Login() {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleLogin = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        const loginName = email.trim().toLowerCase();
+        const loginEmail = loginName.includes('@') ? loginName : loginName + '@dorixona.uz';
+        const { error } = await sb.auth.signInWithPassword({ email: loginEmail, password });
+        setLoading(false);
+        if (error) setError("Kirishda xatolik: email yoki parol noto'g'ri.");
+      };
+
+      return (
+        <div className="min-h-[80vh] flex items-center justify-center">
+          <form onSubmit={handleLogin} className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm space-y-4">
+            <h1 className="text-xl font-black text-gray-800 text-center">🏥 Dorixona Boshqaruv Tizimi</h1>
+            <p className="text-xs text-gray-500 text-center">Davom etish uchun tizimga kiring</p>
+            <input type="text" autoCapitalize="none" placeholder="Login (masalan: admin)" className="w-full p-3 border rounded-xl text-sm" value={email} onChange={e => setEmail(e.target.value)} required />
+            <input type="password" placeholder="Parol" className="w-full p-3 border rounded-xl text-sm" value={password} onChange={e => setPassword(e.target.value)} required />
+            {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+            <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold p-3 rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm">
+              {loading ? 'Kirilmoqda...' : 'Kirish'}
+            </button>
+          </form>
+        </div>
+      );
+    }
+
+    // ---------- ASOSIY ILOVA ----------
+    function Dashboard({ userEmail }) {
       const [activeTab, setActiveTab] = useState('REPORTS');
       const [selectedPharmacyId, setSelectedPharmacyId] = useState(null);
-
-      const [pharmacies, setPharmacies] = useState([
-        { id: 1, name: 'Dorixona #1 (Chilonzor)' },
-        { id: 2, name: 'Dorixona #2 (Yunusobod)' }
-      ]);
-
-      const [couriers, setCouriers] = useState([
-        { id: 1, full_name: 'Alijon Valiyev' },
-        { id: 2, full_name: 'Sardor Rahimov' }
-      ]);
-
+      const [pharmacies, setPharmacies] = useState([]);
+      const [couriers, setCouriers] = useState([]);
       const [records, setRecords] = useState([]);
+      const [loaded, setLoaded] = useState(false);
 
       const [newPharm, setNewPharm] = useState({ name: '', initial_debt: '' });
       const [goodsForm, setGoodsForm] = useState({
-        pharmacy_id: '',
-        cash_amount: '',
-        transfer_amount: '',
-        date: new Date().toISOString().split('T')[0],
-        comment: ''
+        pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: ''
       });
-
       const [payForm, setPayForm] = useState({
-        pharmacy_id: '',
-        courier_id: '',
-        cash_amount: '',
-        transfer_amount: '',
-        payment_type: 'CASH',
-        date: new Date().toISOString().split('T')[0],
-        for_goods_date: '',
-        comment: ''
+        pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '',
+        date: todayLocal(), for_goods_date: '', comment: ''
       });
 
-      // Ma'lumotlarni yuklab olish
+      // Ma'lumotlarni bazadan yuklash (har 30 soniyada yangilanadi)
+      const loadData = async () => {
+        const { data: pharmRes, error: e1 } = await sb.from('pharmacies').select('*').order('id');
+        if (e1) { console.error(e1); alert("Dorixonalarni o'qishda xatolik: " + e1.message); return; }
+        setPharmacies(pharmRes || []);
+
+        const { data: courRes } = await sb.from('couriers').select('*').order('id');
+        setCouriers(courRes || []);
+
+        let all = [], from = 0;
+        while (true) {
+          const { data, error } = await sb.from('records').select('*').order('id').range(from, from + 999);
+          if (error) { alert("Yozuvlarni o'qishda xatolik: " + error.message); break; }
+          all = all.concat(data);
+          if (data.length < 1000) break;
+          from += 1000;
+        }
+        setRecords(all.reverse());
+        setLoaded(true);
+      };
+
       useEffect(() => {
-        const loadData = async () => {
-          let loadedFromSupabase = false;
-
-          if (supabase) {
-            try {
-              const { data: pharmRes, error: pharmErr } = await supabase.from('pharmacies').select('*');
-              if (!pharmErr && pharmRes && pharmRes.length > 0) {
-                setPharmacies(pharmRes);
-                loadedFromSupabase = true;
-              }
-
-              const { data: courRes, error: courErr } = await supabase.from('couriers').select('*');
-              if (!courErr && courRes && courRes.length > 0) {
-                setCouriers(courRes);
-              }
-
-              const { data: recRes, error: recErr } = await supabase.from('records').select('*');
-              if (!recErr && recRes) {
-                setRecords(recRes);
-              }
-            } catch (err) {
-              console.error("Supabase dan o'qishda tarmoq xatoligi:", err);
-            }
-          }
-
-          if (!loadedFromSupabase) {
-            const localPharm = localStorage.getItem('pharmacies');
-            if (localPharm) setPharmacies(JSON.parse(localPharm));
-
-            const localCour = localStorage.getItem('couriers');
-            if (localCour) setCouriers(JSON.parse(localCour));
-
-            const localRec = localStorage.getItem('records');
-            if (localRec) setRecords(JSON.parse(localRec));
-          }
-        };
-
         loadData();
+        const timer = setInterval(loadData, 30000);
+        return () => clearInterval(timer);
       }, []);
-
-      useEffect(() => {
-        localStorage.setItem('pharmacies', JSON.stringify(pharmacies));
-      }, [pharmacies]);
-
-      useEffect(() => {
-        localStorage.setItem('records', JSON.stringify(records));
-      }, [records]);
 
       const handleAddPharmacy = async (e) => {
         e.preventDefault();
-        if (!newPharm.name.trim()) return alert("Dorixona nomini kiriting!");
-
-        const newPName = newPharm.name.trim();
+        const name = newPharm.name.trim();
+        if (!name) return alert("Dorixona nomini kiriting!");
         const initialDebt = Number(newPharm.initial_debt) || 0;
 
-        let createdPharmId = Date.now();
-        let pharmObj = { id: createdPharmId, name: newPName };
-
-        if (supabase) {
-          const { data, error } = await supabase.from('pharmacies').insert([{ name: newPName }]).select();
-          if (!error && data && data[0]) {
-            pharmObj = data[0];
-            createdPharmId = data[0].id;
-          } else if (error) {
-            console.error("Supabase dorixona qo'shish xatoligi:", error);
-            alert("Bazaga yozishda xatolik: " + error.message);
-            return;
-          }
-        }
-
-        const updatedPharmacies = [...pharmacies, pharmObj];
-        setPharmacies(updatedPharmacies);
+        const { data, error } = await sb.from('pharmacies').insert([{ name }]).select();
+        if (error) return alert("Bazaga yozishda xatolik: " + error.message);
+        const pharmObj = data[0];
+        setPharmacies([...pharmacies, pharmObj]);
 
         if (initialDebt > 0) {
           const initRec = {
-            id: Date.now(),
-            pharmacy_id: createdPharmId,
+            pharmacy_id: pharmObj.id,
             courier_id: null,
             type: 'GOODS',
             amount: initialDebt,
             transfer_amount: 0,
             payment_type: 'INITIAL',
-            date: new Date().toISOString().split('T')[0],
+            date: todayLocal(),
             for_goods_date: null,
             comment: 'Boshlang‘ich qarz (Ostatka)'
           };
-
-          if (supabase) {
-            await supabase.from('records').insert([initRec]);
-          }
-          setRecords([initRec, ...records]);
+          const { data: recData, error: recErr } = await sb.from('records').insert([initRec]).select();
+          if (recErr) return alert("Boshlang'ich qarzni saqlashda xatolik: " + recErr.message);
+          setRecords([recData[0], ...records]);
         }
 
         setNewPharm({ name: '', initial_debt: '' });
@@ -173,7 +149,6 @@
         e.preventDefault();
         const cash = Number(goodsForm.cash_amount) || 0;
         const transfer = Number(goodsForm.transfer_amount) || 0;
-
         if (!goodsForm.pharmacy_id || (!cash && !transfer) || !goodsForm.date) {
           return alert("Iltimos, dorixona, summa (naqd yoki perech) va sanani to'ldiring!");
         }
@@ -190,30 +165,17 @@
           comment: goodsForm.comment
         };
 
-        if (supabase) {
-          const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (!error && data) {
-            setRecords([data[0], ...records]);
-            setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
-            alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
-            return;
-          } else if (error) {
-            alert("Tovarni saqlashda xatolik: " + error.message);
-            return;
-          }
-        }
-
-        const fallbackRec = { ...newRec, id: Date.now() };
-        setRecords([fallbackRec, ...records]);
-        setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: new Date().toISOString().split('T')[0], comment: '' });
-        alert("Tovar saqlandi!");
+        const { data, error } = await sb.from('records').insert([newRec]).select();
+        if (error) return alert("Tovarni saqlashda xatolik: " + error.message);
+        setRecords([data[0], ...records]);
+        setGoodsForm({ pharmacy_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), comment: '' });
+        alert("Tovar muvaffaqiyatli topshirildi va qarzga yozildi!");
       };
 
       const handleAddPayment = async (e) => {
         e.preventDefault();
         const cash = Number(payForm.cash_amount) || 0;
         const transfer = Number(payForm.transfer_amount) || 0;
-
         if (!payForm.pharmacy_id || (!cash && !transfer) || !payForm.date || !payForm.courier_id) {
           return alert("Iltimos, dorixona, kuryer, summa (naqd yoki perech) va sanani to'ldiring!");
         }
@@ -230,52 +192,35 @@
           comment: payForm.comment
         };
 
-        if (supabase) {
-          const { data, error } = await supabase.from('records').insert([newRec]).select();
-          if (!error && data) {
-            setRecords([data[0], ...records]);
-            setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
-            alert("To'lov bazaga saqlandi!");
-            return;
-          } else if (error) {
-            alert("To'lovni saqlashda xatolik: " + error.message);
-            return;
-          }
-        }
-
-        const fallbackRec = { ...newRec, id: Date.now() };
-        setRecords([fallbackRec, ...records]);
-        setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', payment_type: 'CASH', date: new Date().toISOString().split('T')[0], for_goods_date: '', comment: '' });
-        alert("To'lov saqlandi!");
+        const { data, error } = await sb.from('records').insert([newRec]).select();
+        if (error) return alert("To'lovni saqlashda xatolik: " + error.message);
+        setRecords([data[0], ...records]);
+        setPayForm({ pharmacy_id: '', courier_id: '', cash_amount: '', transfer_amount: '', date: todayLocal(), for_goods_date: '', comment: '' });
+        alert("To'lov bazaga saqlandi!");
       };
 
       const getPharmacyStats = (pharmacyId) => {
         const pharmRecs = records
           .filter(r => r.pharmacy_id === pharmacyId)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
+          .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id - b.id));
 
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = todayLocal();
 
-        let totalGoodsCash = 0;
-        let totalGoodsTransfer = 0;
-        let totalPaymentCash = 0;
-        let totalPaymentTransfer = 0;
+        let totalGoodsCash = 0, totalGoodsTransfer = 0;
+        let totalPaymentCash = 0, totalPaymentTransfer = 0;
         let yesterdayBalance = 0;
         let unpaidBatches = [];
 
         let runningBalance = 0;
         const historyWithBalance = pharmRecs.map(r => {
-          let recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
-          if (r.type === 'GOODS') {
-            runningBalance += recTotal;
-          } else if (r.type === 'PAYMENT') {
-            runningBalance -= recTotal;
-          }
+          const recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
+          if (r.type === 'GOODS') runningBalance += recTotal;
+          else if (r.type === 'PAYMENT') runningBalance -= recTotal;
           return { ...r, balanceAfter: runningBalance };
         });
 
         pharmRecs.forEach(r => {
-          let recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
+          const recTotal = Number(r.amount || 0) + Number(r.transfer_amount || 0);
           if (r.date < todayStr) {
             if (r.type === 'GOODS') yesterdayBalance += recTotal;
             if (r.type === 'PAYMENT') yesterdayBalance -= recTotal;
@@ -288,7 +233,7 @@
           } else if (r.type === 'PAYMENT') {
             totalPaymentCash += Number(r.amount || 0);
             totalPaymentTransfer += Number(r.transfer_amount || 0);
-            
+
             let payRem = recTotal;
             while (payRem > 0 && unpaidBatches.length > 0) {
               if (unpaidBatches[0].amount <= payRem) {
@@ -309,8 +254,7 @@
         let oldestDays = 0;
         if (currentBalance > 0 && unpaidBatches.length > 0) {
           const oldestDate = new Date(unpaidBatches[0].date);
-          const today = new Date();
-          const diffTime = Math.abs(today - oldestDate);
+          const diffTime = Math.abs(new Date() - oldestDate);
           oldestDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         }
 
@@ -325,33 +269,30 @@
         }
 
         return {
-          totalGoodsCash,
-          totalGoodsTransfer,
-          totalGoods,
-          totalPaymentCash,
-          totalPaymentTransfer,
-          totalPayment,
-          currentBalance,
-          yesterdayBalance,
-          oldestDays,
-          statusClass,
-          statusText,
-          recordsHistory: historyWithBalance
+          totalGoodsCash, totalGoodsTransfer, totalGoods,
+          totalPaymentCash, totalPaymentTransfer, totalPayment,
+          currentBalance, yesterdayBalance, oldestDays,
+          statusClass, statusText, recordsHistory: historyWithBalance
         };
       };
 
       const selectedPharmData = selectedPharmacyId ? getPharmacyStats(selectedPharmacyId) : null;
       const selectedPharmObj = pharmacies.find(p => p.id === selectedPharmacyId);
-      const selectedPharmGoodsDates = payForm.pharmacy_id 
+      const selectedPharmGoodsDates = payForm.pharmacy_id
         ? records.filter(r => r.pharmacy_id === Number(payForm.pharmacy_id) && r.type === 'GOODS')
         : [];
+
+      const allStats = pharmacies.map(p => getPharmacyStats(p.id));
 
       return (
         <div className="max-w-6xl mx-auto space-y-6">
           <header className="bg-white p-5 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
               <h1 className="text-2xl font-black text-gray-800">🏥 Dorixona Boshqaruv Tizimi</h1>
-              <p className="text-xs text-gray-500 mt-0.5">Tovar topshirish, pul olish va qarz muddati tahlili</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Tovar topshirish, pul olish va qarz muddati tahlili · {userEmail}
+                <button onClick={() => sb.auth.signOut()} className="ml-2 text-red-600 font-bold hover:underline">Chiqish</button>
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2 bg-gray-100 p-1.5 rounded-xl text-xs font-bold">
@@ -362,27 +303,27 @@
             </div>
           </header>
 
+          {!loaded && <p className="text-center text-sm text-gray-500">Ma'lumotlar yuklanmoqda...</p>}
+
           {activeTab === 'REPORTS' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-yellow-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Sariq Zonada (30+ kun)</p>
                   <h2 className="text-2xl font-black text-yellow-600 mt-1">
-                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 30 && getPharmacyStats(p.id).oldestDays < 45).length} ta dorixona
+                    {allStats.filter(s => s.oldestDays >= 30 && s.oldestDays < 45).length} ta dorixona
                   </h2>
                 </div>
-
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-red-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Qizil Zonada (45+ kun)</p>
                   <h2 className="text-2xl font-black text-red-600 mt-1">
-                    {pharmacies.filter(p => getPharmacyStats(p.id).oldestDays >= 45).length} ta dorixona
+                    {allStats.filter(s => s.oldestDays >= 45).length} ta dorixona
                   </h2>
                 </div>
-
                 <div className="bg-white p-5 rounded-2xl shadow-sm border-l-4 border-purple-500">
                   <p className="text-xs font-semibold text-gray-500 uppercase">Jami Umumi Qarz Summasi</p>
                   <h2 className="text-2xl font-black text-purple-700 mt-1">
-                    {pharmacies.reduce((acc, p) => acc + getPharmacyStats(p.id).currentBalance, 0).toLocaleString()} so'm
+                    {allStats.reduce((acc, s) => acc + s.currentBalance, 0).toLocaleString()} so'm
                   </h2>
                 </div>
               </div>
@@ -441,7 +382,7 @@
               <form onSubmit={handleAddGoods} className="space-y-4 text-xs">
                 <div>
                   <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={goodsForm.pharmacy_id} onChange={e => setGoodsForm({...goodsForm, pharmacy_id: e.target.value})}>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={goodsForm.pharmacy_id} onChange={e => setGoodsForm({ ...goodsForm, pharmacy_id: e.target.value })}>
                     <option value="">-- Tanlang --</option>
                     {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
@@ -449,20 +390,20 @@
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-semibold mb-1">Naqd Tovar Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 2000000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.cash_amount} onChange={e => setGoodsForm({...goodsForm, cash_amount: e.target.value})} />
+                    <input type="number" placeholder="Masalan: 2000000" className="w-full p-3 border rounded-xl text-base font-bold text-blue-600" value={goodsForm.cash_amount} onChange={e => setGoodsForm({ ...goodsForm, cash_amount: e.target.value })} />
                   </div>
                   <div>
                     <label className="block font-semibold mb-1">Perechisleniye Tovar Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-indigo-600" value={goodsForm.transfer_amount} onChange={e => setGoodsForm({...goodsForm, transfer_amount: e.target.value})} />
+                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-indigo-600" value={goodsForm.transfer_amount} onChange={e => setGoodsForm({ ...goodsForm, transfer_amount: e.target.value })} />
                   </div>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Topshirilgan Sana</label>
-                  <input type="date" className="w-full p-3 border rounded-xl font-bold" value={goodsForm.date} onChange={e => setGoodsForm({...goodsForm, date: e.target.value})} />
+                  <input type="date" className="w-full p-3 border rounded-xl font-bold" value={goodsForm.date} onChange={e => setGoodsForm({ ...goodsForm, date: e.target.value })} />
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Izoh / Nakladnoy Raqami</label>
-                  <input type="text" placeholder="Masalan: Nakladnoy #4501" className="w-full p-3 border rounded-xl" value={goodsForm.comment} onChange={e => setGoodsForm({...goodsForm, comment: e.target.value})} />
+                  <input type="text" placeholder="Masalan: Nakladnoy #4501" className="w-full p-3 border rounded-xl" value={goodsForm.comment} onChange={e => setGoodsForm({ ...goodsForm, comment: e.target.value })} />
                 </div>
                 <button type="submit" className="w-full bg-blue-600 text-white font-bold p-3.5 rounded-xl hover:bg-blue-700 shadow-md text-sm transition mt-4">Tovarni Saqlash va Qarzga Kiritish</button>
               </form>
@@ -475,14 +416,14 @@
               <form onSubmit={handleAddPayment} className="space-y-4 text-xs">
                 <div>
                   <label className="block font-semibold mb-1">Dorixonani Tanlang</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={payForm.pharmacy_id} onChange={e => setPayForm({...payForm, pharmacy_id: e.target.value, for_goods_date: ''})}>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 text-sm font-bold" value={payForm.pharmacy_id} onChange={e => setPayForm({ ...payForm, pharmacy_id: e.target.value, for_goods_date: '' })}>
                     <option value="">-- Tanlang --</option>
                     {pharmacies.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Qaysi Kungi Tovar Uchun Olinmoqda?</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.for_goods_date} onChange={e => setPayForm({...payForm, for_goods_date: e.target.value})}>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.for_goods_date} onChange={e => setPayForm({ ...payForm, for_goods_date: e.target.value })}>
                     <option value="">-- Tanlang (ixtiyoriy) --</option>
                     {selectedPharmGoodsDates.map(r => (
                       <option key={r.id} value={r.date}>{r.date} sanasidagi tovar (Naqd: {Number(r.amount || 0).toLocaleString()}, Perech: {Number(r.transfer_amount || 0).toLocaleString()} so'm)</option>
@@ -491,7 +432,7 @@
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Pulni Olgan Kuryer / Inkassator</label>
-                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.courier_id} onChange={e => setPayForm({...payForm, courier_id: e.target.value})}>
+                  <select className="w-full p-3 border rounded-xl bg-gray-50 font-bold" value={payForm.courier_id} onChange={e => setPayForm({ ...payForm, courier_id: e.target.value })}>
                     <option value="">-- Tanlang --</option>
                     {couriers.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
                   </select>
@@ -499,20 +440,20 @@
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-semibold mb-1">Naqd Pul Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.cash_amount} onChange={e => setPayForm({...payForm, cash_amount: e.target.value})} />
+                    <input type="number" placeholder="Masalan: 1000000" className="w-full p-3 border rounded-xl text-base font-bold text-emerald-600" value={payForm.cash_amount} onChange={e => setPayForm({ ...payForm, cash_amount: e.target.value })} />
                   </div>
                   <div>
                     <label className="block font-semibold mb-1">Perechisleniye Pul Summasi (so'm)</label>
-                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-teal-600" value={payForm.transfer_amount} onChange={e => setPayForm({...payForm, transfer_amount: e.target.value})} />
+                    <input type="number" placeholder="Masalan: 500000" className="w-full p-3 border rounded-xl text-base font-bold text-teal-600" value={payForm.transfer_amount} onChange={e => setPayForm({ ...payForm, transfer_amount: e.target.value })} />
                   </div>
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Olingan Sana</label>
-                  <input type="date" className="w-full p-3 border rounded-xl font-bold" value={payForm.date} onChange={e => setPayForm({...payForm, date: e.target.value})} />
+                  <input type="date" className="w-full p-3 border rounded-xl font-bold" value={payForm.date} onChange={e => setPayForm({ ...payForm, date: e.target.value })} />
                 </div>
                 <div>
                   <label className="block font-semibold mb-1">Izoh</label>
-                  <input type="text" placeholder="Izoh kiriting..." className="w-full p-3 border rounded-xl" value={payForm.comment} onChange={e => setPayForm({...payForm, comment: e.target.value})} />
+                  <input type="text" placeholder="Izoh kiriting..." className="w-full p-3 border rounded-xl" value={payForm.comment} onChange={e => setPayForm({ ...payForm, comment: e.target.value })} />
                 </div>
                 <button type="submit" className="w-full bg-emerald-600 text-white font-bold p-3.5 rounded-xl hover:bg-emerald-700 shadow-md text-sm transition mt-4">To'lovni Saqlash</button>
               </form>
@@ -526,28 +467,15 @@
                   <span>➕</span> Yangi Dorixona Qo'shish
                 </h3>
                 <form onSubmit={handleAddPharmacy} className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <input 
-                    type="text" 
-                    placeholder="Dorixona nomi va manzili..." 
-                    className="p-3 border rounded-xl text-xs font-semibold" 
-                    value={newPharm.name} 
-                    onChange={e => setNewPharm({...newPharm, name: e.target.value})} 
-                  />
-                  <input 
-                    type="number" 
-                    placeholder="Eski qarz / Boshlang'ich ostatka..." 
-                    className="p-3 border rounded-xl text-xs font-semibold text-purple-700" 
-                    value={newPharm.initial_debt} 
-                    onChange={e => setNewPharm({...newPharm, initial_debt: e.target.value})} 
-                  />
-                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-sm">
-                    Dorixonani Qo'shish
-                  </button>
+                  <input type="text" placeholder="Dorixona nomi va manzili..." className="p-3 border rounded-xl text-xs font-semibold" value={newPharm.name} onChange={e => setNewPharm({ ...newPharm, name: e.target.value })} />
+                  <input type="number" placeholder="Eski qarz / Boshlang'ich ostatka..." className="p-3 border rounded-xl text-xs font-semibold text-purple-700" value={newPharm.initial_debt} onChange={e => setNewPharm({ ...newPharm, initial_debt: e.target.value })} />
+                  <button type="submit" className="bg-purple-600 text-white text-xs px-5 py-3 rounded-xl font-bold hover:bg-purple-700 transition shadow-sm">Dorixonani Qo'shish</button>
                 </form>
               </div>
 
               <div className="bg-white p-6 rounded-2xl shadow-sm">
                 <h3 className="text-base font-bold text-gray-800 mb-4">🏥 Barcha Dorixonalar Ro'yxati</h3>
+                {pharmacies.length === 0 && <p className="text-xs text-gray-400">Hali dorixona qo'shilmagan.</p>}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pharmacies.map(p => {
                     const stats = getPharmacyStats(p.id);
@@ -569,7 +497,7 @@
             </div>
           )}
 
-          {selectedPharmacyId && selectedPharmObj && (
+          {selectedPharmacyId && selectedPharmObj && selectedPharmData && (
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-3 z-50">
               <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
                 <div className="p-5 border-b flex justify-between items-center bg-gray-50">
@@ -580,7 +508,7 @@
                   <button onClick={() => setSelectedPharmacyId(null)} className="bg-gray-200 hover:bg-gray-300 w-8 h-8 rounded-full font-bold text-gray-700 flex items-center justify-center">✕</button>
                 </div>
 
-                <div className="p-5 overflow-y-auto space-y-4">
+                <div className="p-5 overflow-auto space-y-4">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="bg-gray-100 border-b text-gray-500 uppercase">
@@ -603,13 +531,12 @@
                           const isGoods = r.type === 'GOODS';
                           const cashVal = Number(r.amount || 0);
                           const transVal = Number(r.transfer_amount || 0);
-
                           return (
                             <tr key={r.id} className="hover:bg-gray-50">
                               <td className="p-2.5 text-gray-500 font-semibold">{r.date}</td>
                               <td className="p-2.5 font-bold">
                                 {isGoods ? (
-                                 <span className="text-blue-600">📦 Tovar olindi</span>
+                                  <span className="text-blue-600">📦 Tovar olindi</span>
                                 ) : (
                                   <span className="text-emerald-600">
                                     💵 Pul berildi
@@ -617,16 +544,10 @@
                                   </span>
                                 )}
                               </td>
-                              <td className="p-2.5 font-bold text-gray-900">
-                                {cashVal > 0 ? `${cashVal.toLocaleString()} so'm` : '-'}
-                              </td>
-                              <td className="p-2.5 font-bold text-indigo-700">
-                                {transVal > 0 ? `${transVal.toLocaleString()} so'm` : '-'}
-                              </td>
+                              <td className="p-2.5 font-bold text-gray-900">{cashVal > 0 ? `${cashVal.toLocaleString()} so'm` : '-'}</td>
+                              <td className="p-2.5 font-bold text-indigo-700">{transVal > 0 ? `${transVal.toLocaleString()} so'm` : '-'}</td>
                               <td className="p-2.5 font-black text-purple-700 bg-purple-50/50">{Number(r.balanceAfter).toLocaleString()} so'm</td>
-                              <td className="p-2.5 text-gray-500">
-                                {courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}
-                              </td>
+                              <td className="p-2.5 text-gray-500">{courier ? `${courier.full_name} | ` : ''}{r.comment || '-'}</td>
                             </tr>
                           );
                         })
@@ -643,6 +564,27 @@
           )}
         </div>
       );
+    }
+
+    // ---------- KIRISH NUQTASI ----------
+    function App() {
+      const [session, setSession] = useState(null);
+      const [checking, setChecking] = useState(true);
+
+      useEffect(() => {
+        if (!sb) { setChecking(false); return; }
+        sb.auth.getSession().then(({ data }) => {
+          setSession(data.session);
+          setChecking(false);
+        });
+        const { data } = sb.auth.onAuthStateChange((_event, s) => setSession(s));
+        return () => data.subscription.unsubscribe();
+      }, []);
+
+      if (!sb) return <p className="text-center text-red-600 font-bold mt-10">Supabase ulanmadi. Internetni tekshiring va sahifani yangilang.</p>;
+      if (checking) return <p className="text-center text-gray-500 mt-10">Yuklanmoqda...</p>;
+      if (!session) return <Login />;
+      return <Dashboard userEmail={session.user.email} />;
     }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />);
